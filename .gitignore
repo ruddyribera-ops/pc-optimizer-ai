@@ -31,3 +31,14 @@ Thumbs.db
 
 # Railway
 *.log
+
+# Agent build artifacts
+pc-optimizer-agent/build/
+pc-optimizer-agent/dist/
+pc-optimizer-agent/*.spec
+
+# Agent device ID
+.device_id
+
+# Test distribution
+dist/

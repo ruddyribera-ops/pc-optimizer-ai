@@ -180,6 +180,14 @@ async def root():
         .lang-btn:hover { border-color: #00ff88; color: #00ff88; }
         .lang-btn.active { background: #00ff88; color: #000; border-color: #00ff88; }
         
+        .header-right { display: flex; align-items: center; gap: 20px; }
+        .agent-status { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 6px 12px; background: #1a1a25; border-radius: 20px; border: 1px solid #333; }
+        .agent-status .dot { width: 8px; height: 8px; border-radius: 50%; background: #666; }
+        .agent-status.online .dot { background: #00ff88; box-shadow: 0 0 8px #00ff88; }
+        .agent-status.offline .dot { background: #ff4444; }
+        .agent-status-label { color: #888; }
+        .agent-status.online .agent-status-label { color: #00ff88; }
+        
         /* Main Layout */
         .grid { display: grid; grid-template-columns: 280px 1fr 280px; gap: 20px; max-width: 1400px; margin: 0 auto; }
         
@@ -325,9 +333,15 @@ async def root():
 <body>
     <div class="header">
         <h1>PC Optimizer <span>AI</span></h1>
-        <div class="lang-buttons">
-            <button class="lang-btn active" data-lang="en" onclick="setLang('en')">EN</button>
-            <button class="lang-btn" data-lang="es" onclick="setLang('es')">ES</button>
+        <div class="header-right">
+            <div class="agent-status offline" id="agentStatus">
+                <span class="dot"></span>
+                <span class="agent-status-label" id="agentStatusLabel">Agent Required</span>
+            </div>
+            <div class="lang-buttons">
+                <button class="lang-btn active" data-lang="en" onclick="setLang('en')">EN</button>
+                <button class="lang-btn" data-lang="es" onclick="setLang('es')">ES</button>
+            </div>
         </div>
     </div>
     
@@ -539,6 +553,10 @@ async def root():
                 noDevices: 'No devices found',
                 welcome: 'Welcome! Select your device to begin.',
                 
+                // Agent status
+                agentConnected: 'Agent Connected',
+                agentRequired: 'Agent Required',
+                
                 // Progress steps
                 scan: 'Scan',
                 clean: 'Clean',
@@ -617,6 +635,10 @@ async def root():
                 activityLog: 'Registro de Actividad',
                 noDevices: 'Sin dispositivos',
                 welcome: 'Bienvenido! Selecciona tu dispositivo para comenzar.',
+                
+                // Agent status
+                agentConnected: 'Agente Conectado',
+                agentRequired: 'Agente Requerido',
                 
                 // Progress steps
                 scan: 'Escanear',
@@ -1270,6 +1292,31 @@ function setLang(lang) {
             }
         }
         
+        function checkAgentStatus() {
+            if (!selectedDevice) return;
+            
+            fetch(API_URL + '/device/' + selectedDevice + '/agent-status')
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    var statusEl = document.getElementById('agentStatus');
+                    var labelEl = document.getElementById('agentStatusLabel');
+                    
+                    if (data.agent_online) {
+                        statusEl.className = 'agent-status online';
+                        labelEl.textContent = currentLang === 'es' ? 'Agente Conectado' : 'Agent Connected';
+                    } else {
+                        statusEl.className = 'agent-status offline';
+                        labelEl.textContent = currentLang === 'es' ? 'Agente Requerido' : 'Agent Required';
+                    }
+                })
+                .catch(function(err) {
+                    var statusEl = document.getElementById('agentStatus');
+                    var labelEl = document.getElementById('agentStatusLabel');
+                    statusEl.className = 'agent-status offline';
+                    labelEl.textContent = currentLang === 'es' ? 'Agente Requerido' : 'Agent Required';
+                });
+        }
+        
         // Initialize - try to register device first, then load devices
         console.log('PC Optimizer AI initializing...');
         
@@ -1284,9 +1331,11 @@ function setLang(lang) {
         // Also try to load system info after a short delay
         setTimeout(function() {
             loadSystemInfo();
+            checkAgentStatus();
         }, 500);
         
         setInterval(loadDevices, 10000);
+        setInterval(checkAgentStatus, 5000);
         console.log('PC Optimizer AI initialized - ready for interaction');
     </script>
 </body>
@@ -1415,14 +1464,40 @@ async def receive_result(result: CommandResult):
 @app.post("/status")
 async def receive_status(data: dict):
     device_id = data.get("device_id")
+    is_agent = data.get("is_agent", False)
     async with AsyncSessionLocal() as session:
         stmt = select(Device).where(Device.device_id == device_id)
         device = (await session.execute(stmt)).scalar_one_or_none()
         if device:
             device.last_seen = datetime.now()
+            device.status = "online" if is_agent else device.status
             await session.commit()
 
-    return {"status": "ok"}
+    return {"status": "ok", "is_agent": is_agent}
+
+
+@app.get("/device/{device_id}/agent-status")
+async def get_agent_status(device_id: str):
+    async with AsyncSessionLocal() as session:
+        stmt = select(Device).where(Device.device_id == device_id)
+        device = (await session.execute(stmt)).scalar_one_or_none()
+
+        if not device:
+            return {"agent_online": False, "message": "Device not registered"}
+
+        now = datetime.now()
+        last_seen = device.last_seen
+        time_diff = (now - last_seen).total_seconds() if last_seen else 999
+
+        agent_online = time_diff < 30
+
+        return {
+            "agent_online": agent_online,
+            "last_seen": last_seen.isoformat() if last_seen else None,
+            "time_since_seen": time_diff,
+            "device_id": device_id,
+            "hostname": device.hostname,
+        }
 
 
 @app.get("/device/{device_id}/history")
@@ -1632,9 +1707,9 @@ async def execute_task_direct(device_id: str, task: str, param: str = None):
     import sys
 
     possible_paths = [
-        os.path.join(os.path.dirname(os.path.dirname(__file__)), "pc-optimizer-agent"),
+        os.path.join(os.path.dirname(__file__), "pc-optimizer-agent"),
         os.path.join(os.getcwd(), "pc-optimizer-agent"),
-        os.path.join(os.path.dirname(__file__), "..", "pc-optimizer-agent"),
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "pc-optimizer-agent"),
     ]
 
     agent_dir = None
