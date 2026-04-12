@@ -358,9 +358,12 @@
             document.getElementById('compTitle').textContent = t('beforeAfter');
         }
         
+        // VERSION - change this to force cache refresh
+        var CACHE_VERSION = 'v=3';
+        
         // API URL - FORCE Railway URL to bypass any caching issues
         var API_URL = 'https://pc-optimizer-ai-production.up.railway.app';
-        console.log('API URL:', API_URL);
+        console.log('API URL:', API_URL, CACHE_VERSION);
 
         // Generate or retrieve device ID from localStorage
         function getDeviceId() {
