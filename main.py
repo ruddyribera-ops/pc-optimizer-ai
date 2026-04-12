@@ -129,10 +129,8 @@ if os.path.exists(STATIC_DIR):
 
 @app.on_event("startup")
 async def startup():
-    # Initialize database lazily on first request instead
-    # await init_db()
-    # logger.info("Database initialized successfully")
-    logger.info("Application startup complete")
+    await init_db()
+    logger.info("Database initialized successfully")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -910,12 +908,6 @@ async def root():
 </html>"""
 
     return html_content
-
-
-@app.get("/test")
-async def test_endpoint():
-    """Simple test endpoint for debugging"""
-    return {"status": "ok", "message": "App is working"}
 
 
 @app.get("/health")
