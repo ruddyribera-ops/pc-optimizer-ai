@@ -1,17 +1,17 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import Optional, List
-import sqlite3
+from typing import Optional
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import Column, String, Integer, Text, DateTime, select
+from sqlalchemy.sql import func
 import uuid
 from datetime import datetime
 import logging
 import json
 import requests
-import time
-import os
-
 import os
 
 logging.basicConfig(level=logging.INFO)
@@ -19,9 +19,8 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="PC Optimizer Cloud API")
 
-# Railway provides a PORT environment variable
 PORT = int(os.getenv("PORT", 8000))
-DATABASE_URL = os.getenv("DATABASE_URL", "optimizer.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///optimizer.db")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -38,20 +37,67 @@ async def root():
     return {"message": "PC Optimizer API - use /static/index.html for dashboard"}
 
 
-DATABASE = os.getenv("DATABASE_URL", "optimizer.db")
+def get_async_db_url(url: str) -> str:
+    """Convert sync DB URL to async URL"""
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+asyncpg://")
+    elif url.startswith("sqlite://"):
+        return url.replace("sqlite://", "sqlite+aiosqlite://")
+    return url
 
 
-def get_db_connection():
-    """Get database connection - supports both SQLite and PostgreSQL"""
-    db_url = os.getenv("DATABASE_URL", "")
-    if db_url.startswith("postgresql"):
-        # Railway PostgreSQL - will be handled differently
-        # For now, fall back to SQLite for local dev
-        pass
-    return DATABASE
+async_engine = create_async_engine(
+    get_async_db_url(DATABASE_URL),
+    echo=False,
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
+)
+
+AsyncSessionLocal = sessionmaker(
+    async_engine, class_=AsyncSession, expire_on_commit=False
+)
+
+Base = declarative_base()
 
 
-# Health check endpoint for Railway
+class Device(Base):
+    __tablename__ = "devices"
+
+    device_id = Column(String, primary_key=True)
+    hostname = Column(String)
+    registered_at = Column(DateTime, default=datetime.now)
+    last_seen = Column(DateTime, default=datetime.now)
+    status = Column(String, default="online")
+
+
+class Command(Base):
+    __tablename__ = "commands"
+
+    id = Column(String, primary_key=True)
+    device_id = Column(String, nullable=False)
+    task = Column(String)
+    param = Column(String)
+    status = Column(String, default="pending")
+    created_at = Column(DateTime, default=datetime.now)
+    completed_at = Column(DateTime, nullable=True)
+    result = Column(Text, nullable=True)
+
+
+class SystemSnapshot(Base):
+    __tablename__ = "system_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_id = Column(String, nullable=False)
+    snapshot_json = Column(Text)
+    created_at = Column(DateTime, default=datetime.now)
+
+
+async def init_db():
+    async with async_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "pc-optimizer-api"}
@@ -60,51 +106,6 @@ async def health_check():
 @app.get("/healthz")
 async def health_check_alt():
     return {"status": "healthy"}
-
-
-def init_db():
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS devices (
-            device_id TEXT PRIMARY KEY,
-            hostname TEXT,
-            registered_at TEXT,
-            last_seen TEXT,
-            status TEXT DEFAULT 'online'
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS commands (
-            id TEXT PRIMARY KEY,
-            device_id TEXT,
-            task TEXT,
-            param TEXT,
-            status TEXT DEFAULT 'pending',
-            created_at TEXT,
-            completed_at TEXT,
-            result TEXT,
-            FOREIGN KEY(device_id) REFERENCES devices(device_id)
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS system_snapshots (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            device_id TEXT,
-            snapshot_json TEXT,
-            created_at TEXT,
-            FOREIGN KEY(device_id) REFERENCES devices(device_id)
-        )
-    """)
-
-    conn.commit()
-    conn.close()
-
-
-init_db()
 
 
 class DeviceRegister(BaseModel):
@@ -132,24 +133,24 @@ class ScanRequest(BaseModel):
 
 @app.post("/register")
 async def register_device(device: DeviceRegister):
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
+    async with AsyncSessionLocal() as session:
+        stmt = select(Device).where(Device.device_id == device.device_id)
+        result = await session.execute(stmt)
+        existing = result.scalar_one_or_none()
 
-    cursor.execute(
-        """
-        INSERT OR REPLACE INTO devices (device_id, hostname, registered_at, last_seen)
-        VALUES (?, ?, ?, ?)
-    """,
-        (
-            device.device_id,
-            device.hostname,
-            datetime.now().isoformat(),
-            datetime.now().isoformat(),
-        ),
-    )
+        if existing:
+            existing.hostname = device.hostname
+            existing.last_seen = datetime.now()
+        else:
+            new_device = Device(
+                device_id=device.device_id,
+                hostname=device.hostname,
+                registered_at=datetime.now(),
+                last_seen=datetime.now(),
+            )
+            session.add(new_device)
 
-    conn.commit()
-    conn.close()
+        await session.commit()
 
     logger.info(f"Device registered: {device.device_id}")
     return {"status": "registered", "device_id": device.device_id}
@@ -157,21 +158,18 @@ async def register_device(device: DeviceRegister):
 
 @app.get("/devices")
 async def list_devices():
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT device_id, hostname, registered_at, last_seen, status FROM devices"
-    )
-    devices = cursor.fetchall()
-    conn.close()
+    async with AsyncSessionLocal() as session:
+        stmt = select(Device)
+        result = await session.execute(stmt)
+        devices = result.scalars().all()
 
     return [
         {
-            "device_id": d[0],
-            "hostname": d[1],
-            "registered_at": d[2],
-            "last_seen": d[3],
-            "status": d[4],
+            "device_id": d.device_id,
+            "hostname": d.hostname,
+            "registered_at": d.registered_at.isoformat() if d.registered_at else None,
+            "last_seen": d.last_seen.isoformat() if d.last_seen else None,
+            "status": d.status,
         }
         for d in devices
     ]
@@ -179,55 +177,42 @@ async def list_devices():
 
 @app.get("/commands/{device_id}")
 async def get_commands(device_id: str):
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
+    async with AsyncSessionLocal() as session:
+        stmt = (
+            select(Command)
+            .where(Command.device_id == device_id, Command.status == "pending")
+            .order_by(Command.created_at.asc())
+        )
+        result = await session.execute(stmt)
+        commands = result.scalars().all()
 
-    cursor.execute(
-        """
-        SELECT id, task, param, status FROM commands
-        WHERE device_id = ? AND status = 'pending'
-        ORDER BY created_at ASC
-    """,
-        (device_id,),
-    )
-
-    commands = cursor.fetchall()
-    conn.close()
-
-    return [{"id": c[0], "task": c[1], "param": c[2], "status": c[3]} for c in commands]
+    return [
+        {"id": c.id, "task": c.task, "param": c.param, "status": c.status}
+        for c in commands
+    ]
 
 
 @app.post("/command")
 async def send_command(command: TaskCommand):
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
+    async with AsyncSessionLocal() as session:
+        stmt = select(Device).where(Device.device_id == command.device_id)
+        result = await session.execute(stmt)
+        device = result.scalar_one_or_none()
 
-    cursor.execute(
-        "SELECT device_id FROM devices WHERE device_id = ?", (command.device_id,)
-    )
-    if not cursor.fetchone():
-        conn.close()
-        raise HTTPException(status_code=404, detail="Device not found")
+        if not device:
+            raise HTTPException(status_code=404, detail="Device not found")
 
-    command_id = str(uuid.uuid4())
-
-    cursor.execute(
-        """
-        INSERT INTO commands (id, device_id, task, param, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """,
-        (
-            command_id,
-            command.device_id,
-            command.task,
-            command.param,
-            "pending",
-            datetime.now().isoformat(),
-        ),
-    )
-
-    conn.commit()
-    conn.close()
+        command_id = str(uuid.uuid4())
+        new_command = Command(
+            id=command_id,
+            device_id=command.device_id,
+            task=command.task,
+            param=command.param,
+            status="pending",
+            created_at=datetime.now(),
+        )
+        session.add(new_command)
+        await session.commit()
 
     logger.info(f"Command queued: {command.task} for device {command.device_id}")
     return {"command_id": command_id, "status": "queued"}
@@ -235,30 +220,23 @@ async def send_command(command: TaskCommand):
 
 @app.post("/result")
 async def receive_result(result: CommandResult):
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
+    async with AsyncSessionLocal() as session:
+        stmt = select(Command).where(
+            Command.device_id == result.device_id, Command.task == result.task
+        )
+        command = (await session.execute(stmt)).scalar_one_or_none()
 
-    cursor.execute(
-        """
-        UPDATE commands
-        SET status = 'completed', result = ?, completed_at = ?
-        WHERE device_id = ? AND task = ?
-    """,
-        (
-            json.dumps(result.result),
-            datetime.now().isoformat(),
-            result.device_id,
-            result.task,
-        ),
-    )
+        if command:
+            command.status = "completed"
+            command.result = json.dumps(result.result)
+            command.completed_at = datetime.now()
 
-    cursor.execute(
-        "UPDATE devices SET last_seen = ? WHERE device_id = ?",
-        (datetime.now().isoformat(), result.device_id),
-    )
+        stmt = select(Device).where(Device.device_id == result.device_id)
+        device = (await session.execute(stmt)).scalar_one_or_none()
+        if device:
+            device.last_seen = datetime.now()
 
-    conn.commit()
-    conn.close()
+        await session.commit()
 
     logger.info(f"Result received: {result.task} from {result.device_id}")
     return {"status": "received"}
@@ -267,48 +245,37 @@ async def receive_result(result: CommandResult):
 @app.post("/status")
 async def receive_status(data: dict):
     device_id = data.get("device_id")
-    status_data = data.get("status", {})
-
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE devices SET last_seen = ? WHERE device_id = ?",
-        (datetime.now().isoformat(), device_id),
-    )
-    conn.commit()
-    conn.close()
+    async with AsyncSessionLocal() as session:
+        stmt = select(Device).where(Device.device_id == device_id)
+        device = (await session.execute(stmt)).scalar_one_or_none()
+        if device:
+            device.last_seen = datetime.now()
+            await session.commit()
 
     return {"status": "ok"}
 
 
 @app.get("/device/{device_id}/history")
 async def get_device_history(device_id: str):
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        SELECT id, task, param, status, created_at, completed_at, result
-        FROM commands
-        WHERE device_id = ?
-        ORDER BY created_at DESC
-        LIMIT 50
-    """,
-        (device_id,),
-    )
-
-    history = cursor.fetchall()
-    conn.close()
+    async with AsyncSessionLocal() as session:
+        stmt = (
+            select(Command)
+            .where(Command.device_id == device_id)
+            .order_by(Command.created_at.desc())
+            .limit(50)
+        )
+        result = await session.execute(stmt)
+        history = result.scalars().all()
 
     return [
         {
-            "id": h[0],
-            "task": h[1],
-            "param": h[2],
-            "status": h[3],
-            "created_at": h[4],
-            "completed_at": h[5],
-            "result": json.loads(h[6]) if h[6] else None,
+            "id": h.id,
+            "task": h.task,
+            "param": h.param,
+            "status": h.status,
+            "created_at": h.created_at.isoformat() if h.created_at else None,
+            "completed_at": h.completed_at.isoformat() if h.completed_at else None,
+            "result": json.loads(h.result) if h.result else None,
         }
         for h in history
     ]
@@ -323,26 +290,20 @@ async def analyze_system(device_id: str = None, request: ScanRequest = None):
 
     logger.info(f"Analyze request for device: {device_id}")
 
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
+    async with AsyncSessionLocal() as session:
+        stmt = (
+            select(SystemSnapshot)
+            .where(SystemSnapshot.device_id == device_id)
+            .order_by(SystemSnapshot.created_at.desc())
+            .limit(1)
+        )
+        result = await session.execute(stmt)
+        snapshot_row = result.scalar_one_or_none()
 
-    cursor.execute(
-        """
-        SELECT snapshot_json FROM system_snapshots
-        WHERE device_id = ?
-        ORDER BY created_at DESC
-        LIMIT 1
-    """,
-        (device_id,),
-    )
-
-    row = cursor.fetchone()
-    conn.close()
-
-    if not row:
+    if not snapshot_row:
         raise HTTPException(status_code=404, detail="No system snapshot found")
 
-    snapshot = json.loads(row[0])
+    snapshot = json.loads(snapshot_row.snapshot_json)
 
     system_info = snapshot.get("system_info", {})
     apps = snapshot.get("installed_apps", [])
@@ -369,89 +330,25 @@ Generate a JSON list of tasks to optimize this PC. Return ONLY a JSON array of o
 [{{"task": "cleanup_temp_files", "param": null}}, {{"task": "uninstall_app", "param": "Candy Crush"}}]
 """
 
+    snapshot = {
+        "system_info": {
+            "hostname": system_info.get("hostname", "TEST-PC"),
+            "os": system_info.get("os", "Windows 11"),
+            "total_ram_gb": system_info.get("total_ram_gb", 16),
+            "free_ram_gb": system_info.get("free_ram_gb", 8),
+            "cpu": system_info.get("cpu", "Intel"),
+        },
+        "installed_apps": [
+            {"DisplayName": a.get("DisplayName", "Unknown")} for a in apps[:20]
+        ],
+        "enabled_features": [
+            {"FeatureName": f.get("FeatureName", "Unknown")} for f in features[:10]
+        ],
+        "disk_space": disk[:5],
+    }
+
     try:
         logger.info(f"Sending request to Ollama for device {device_id}")
-
-        # First try getting snapshot from DB
-        conn = sqlite3.connect(DATABASE)
-        cursor = conn.cursor()
-
-        # First check if we have any snapshots at all for this device
-        cursor.execute(
-            "SELECT COUNT(*) FROM system_snapshots WHERE device_id = ?", (device_id,)
-        )
-        count = cursor.fetchone()[0]
-        logger.info(f"Snapshot count for {device_id}: {count}")
-
-        if count > 0:
-            # Get most recent snapshot - check for result column first
-            cursor.execute(
-                """
-                SELECT snapshot_json FROM system_snapshots
-                WHERE device_id = ?
-                ORDER BY created_at DESC
-                LIMIT 1
-            """,
-                (device_id,),
-            )
-            row = cursor.fetchone()
-            conn.close()
-
-            if row:
-                snapshot = json.loads(row[0])
-                logger.info(f"Got snapshot with keys: {list(snapshot.keys())}")
-            else:
-                snapshot = None
-                logger.warning("No snapshot data in row")
-        else:
-            conn.close()
-            # Try to build from command history
-            snapshot = None
-            logger.info("No snapshots, trying command history")
-
-        # If we don't have a snapshot yet, use test data
-        if not snapshot:
-            snapshot = {
-                "system_info": {
-                    "hostname": "TEST-PC",
-                    "os": "Windows 11",
-                    "total_ram_gb": 16,
-                    "free_ram_gb": 8,
-                    "cpu": "Intel",
-                },
-                "installed_apps": [
-                    {"DisplayName": "Edge"},
-                    {"DisplayName": "Code"},
-                    {"DisplayName": "Candy Crush"},
-                ],
-                "enabled_features": [{"FeatureName": "XboxGameMonitoring"}],
-                "disk_space": [{"Name": "C:", "Free(GB)": 100}],
-            }
-
-        system_info = snapshot.get("system_info", {})
-        apps = snapshot.get("installed_apps", [])
-        features = snapshot.get("enabled_features", [])
-        disk = snapshot.get("disk_space", [])
-
-        prompt = f"""You are a PC optimization expert. Analyze this system and recommend cleanup actions.
-
-System:
-- Hostname: {system_info.get("hostname", "unknown")}
-- OS: {system_info.get("os", "unknown")}
-- RAM: {system_info.get("total_ram_gb", "?")}GB total, {system_info.get("free_ram_gb", "?")}GB free
-
-Installed Applications ({len(apps)}):
-{", ".join([a.get("DisplayName", "Unknown")[:50] for a in apps[:20]])}
-
-Enabled Windows Features:
-{", ".join([f.get("FeatureName", "Unknown") for f in features[:10]])}
-
-Disk Space:
-{json.dumps(disk[:5], indent=2)}
-
-Generate a JSON list of tasks to optimize this PC. Return ONLY a JSON array with task and param fields.
-"""
-
         response = requests.post(
             "http://localhost:11434/api/generate",
             json={"model": "gemma4:e2b", "prompt": prompt, "stream": False},
@@ -464,7 +361,6 @@ Generate a JSON list of tasks to optimize this PC. Return ONLY a JSON array with
             ai_response = data.get("response", "")
             logger.info(f"AI Response: {ai_response[:500]}")
 
-            # Strip markdown code blocks if present
             if "```json" in ai_response:
                 ai_response = ai_response.split("```json")[1].split("```")[0]
             elif "```" in ai_response:
@@ -478,7 +374,6 @@ Generate a JSON list of tasks to optimize this PC. Return ONLY a JSON array with
 
             try:
                 tasks = json.loads(ai_response)
-                # Map AI task names to agent task names
                 mapped_tasks = []
                 task_mapping = {
                     "disk cleanup": "cleanup_temp_files",
@@ -497,17 +392,12 @@ Generate a JSON list of tasks to optimize this PC. Return ONLY a JSON array with
                     "game mode": "disable_xbox_features",
                     "cortana": "disable_cortana",
                     "advertising id": "disable_advertising_id",
-                    "application review": "get_installed_apps",
-                    "app review": "get_installed_apps",
-                    "uninstall app": "uninstall_app",
-                    "uninstall application": "uninstall_app",
                 }
 
                 for t in tasks:
                     task_name = t.get("task", "").lower()
                     param = t.get("param")
 
-                    # Check if we have a direct mapping
                     mapped_name = None
                     for key, value in task_mapping.items():
                         if key in task_name:
@@ -539,39 +429,29 @@ Generate a JSON list of tasks to optimize this PC. Return ONLY a JSON array with
         return {"analysis": "error", "message": str(e)}
 
 
-async def receive_snapshot(device_id: str = None, data: dict = None):
-    if data is None:
-        raise HTTPException(status_code=400, detail="JSON body required")
+@app.post("/snapshot")
+async def receive_snapshot(data: dict):
+    device_id = data.get("device_id")
     if not device_id:
-        device_id = data.get("device_id")
-        if not device_id:
-            raise HTTPException(status_code=400, detail="device_id required")
+        raise HTTPException(status_code=400, detail="device_id required")
 
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        INSERT INTO system_snapshots (device_id, snapshot_json, created_at)
-        VALUES (?, ?, ?)
-    """,
-        (device_id, json.dumps(data), datetime.now().isoformat()),
-    )
-
-    conn.commit()
-    conn.close()
+    async with AsyncSessionLocal() as session:
+        snapshot = SystemSnapshot(
+            device_id=device_id,
+            snapshot_json=json.dumps(data),
+            created_at=datetime.now(),
+        )
+        session.add(snapshot)
+        await session.commit()
 
     return {"status": "saved"}
 
 
 @app.post("/execute/{device_id}/{task}")
 async def execute_task_direct(device_id: str, task: str, param: str = None):
-    """Execute a task directly on the server (for testing/single PC use)"""
     import subprocess
     import sys
-    import os
 
-    # Try to find agent directory - works locally but not on Railway
     possible_paths = [
         os.path.join(os.path.dirname(os.path.dirname(__file__)), "pc-optimizer-agent"),
         os.path.join(os.getcwd(), "pc-optimizer-agent"),
@@ -588,49 +468,34 @@ async def execute_task_direct(device_id: str, task: str, param: str = None):
         sys.path.insert(0, agent_dir)
 
     try:
-        # Try to import from agent - will fail on Railway
         from tasks import execute_task
 
-        # Also get disk space for the meters
         disk_result = execute_task("get_disk_space")
-
         result = execute_task(task, param)
 
-        # Include disk info in result
         if disk_result and task != "get_disk_space":
             result["disk_space"] = disk_result
 
-        # Also report the result
-        conn = sqlite3.connect(DATABASE)
-        cursor = conn.cursor()
-
-        command_id = str(uuid.uuid4())
-        cursor.execute(
-            """
-            INSERT INTO commands (id, device_id, task, param, status, created_at, completed_at, result)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                command_id,
-                device_id,
-                task,
-                param,
-                "completed",
-                datetime.now().isoformat(),
-                datetime.now().isoformat(),
-                json.dumps(result),
-            ),
-        )
-
-        conn.commit()
-        conn.close()
+        async with AsyncSessionLocal() as session:
+            command_id = str(uuid.uuid4())
+            new_command = Command(
+                id=command_id,
+                device_id=device_id,
+                task=task,
+                param=param,
+                status="completed",
+                created_at=datetime.now(),
+                completed_at=datetime.now(),
+                result=json.dumps(result),
+            )
+            session.add(new_command)
+            await session.commit()
 
         return {"success": True, "task": task, "result": result}
+
     except ImportError as e:
-        # On Railway - return mock data for demo purposes
         logger.warning(f"Agent not available on Railway - using mock data. Error: {e}")
 
-        # Generate mock system info for demonstration
         if task == "get_system_info":
             result = {
                 "hostname": f"device-{device_id[:8]}",
@@ -662,29 +527,21 @@ async def execute_task_direct(device_id: str, task: str, param: str = None):
         else:
             result = {"success": True, "message": f"Task {task} simulated on Railway"}
 
-        # Store in database
         try:
-            conn = sqlite3.connect(DATABASE)
-            cursor = conn.cursor()
-            command_id = str(uuid.uuid4())
-            cursor.execute(
-                """
-                INSERT INTO commands (id, device_id, task, param, status, created_at, completed_at, result)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    command_id,
-                    device_id,
-                    task,
-                    param,
-                    "completed",
-                    datetime.now().isoformat(),
-                    datetime.now().isoformat(),
-                    json.dumps(result),
-                ),
-            )
-            conn.commit()
-            conn.close()
+            async with AsyncSessionLocal() as session:
+                command_id = str(uuid.uuid4())
+                new_command = Command(
+                    id=command_id,
+                    device_id=device_id,
+                    task=task,
+                    param=param,
+                    status="completed",
+                    created_at=datetime.now(),
+                    completed_at=datetime.now(),
+                    result=json.dumps(result),
+                )
+                session.add(new_command)
+                await session.commit()
         except Exception as db_err:
             logger.error(f"DB write failed: {db_err}")
 
@@ -693,6 +550,11 @@ async def execute_task_direct(device_id: str, task: str, param: str = None):
     except Exception as e:
         logger.error(f"Direct execution failed: {e}")
         return {"success": False, "error": str(e)}
+
+
+@app.on_event("startup")
+async def startup():
+    await init_db()
 
 
 if __name__ == "__main__":
