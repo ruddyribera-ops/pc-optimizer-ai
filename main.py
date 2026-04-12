@@ -957,109 +957,29 @@ class TaskCommand(BaseModel):
     require_approval: bool = True
 
 
+class ScanRequest(BaseModel):
+    device_id: Optional[str] = None
+
+
 class CommandResult(BaseModel):
     device_id: str
     task: str
     result: dict
-
-
-class ScanRequest(BaseModel):
-    device_id: str
-
-
-@app.post("/register")
-async def register_device(device: DeviceRegister):
-    async with AsyncSessionLocal() as session:
-        stmt = select(Device).where(Device.device_id == device.device_id)
-        result = await session.execute(stmt)
-        existing = result.scalar_one_or_none()
-
-        if existing:
-            existing.hostname = device.hostname
-            existing.last_seen = datetime.now()
-        else:
-            new_device = Device(
-                device_id=device.device_id,
-                hostname=device.hostname,
-                registered_at=datetime.now(),
-                last_seen=datetime.now(),
-            )
-            session.add(new_device)
-
-        await session.commit()
-
-    logger.info(f"Device registered: {device.device_id}")
-    return {"status": "registered", "device_id": device.device_id}
-
-
-@app.get("/devices")
-async def list_devices():
-    async with AsyncSessionLocal() as session:
-        stmt = select(Device)
-        result = await session.execute(stmt)
-        devices = result.scalars().all()
-
-    return [
-        {
-            "device_id": d.device_id,
-            "hostname": d.hostname,
-            "registered_at": d.registered_at.isoformat() if d.registered_at else None,
-            "last_seen": d.last_seen.isoformat() if d.last_seen else None,
-            "status": d.status,
-        }
-        for d in devices
-    ]
-
-
-@app.get("/commands/{device_id}")
-async def get_commands(device_id: str):
-    async with AsyncSessionLocal() as session:
-        stmt = (
-            select(Command)
-            .where(Command.device_id == device_id, Command.status == "pending")
-            .order_by(Command.created_at.asc())
-        )
-        result = await session.execute(stmt)
-        commands = result.scalars().all()
-
-    return [
-        {"id": c.id, "task": c.task, "param": c.param, "status": c.status}
-        for c in commands
-    ]
-
-
-@app.post("/command")
-async def send_command(command: TaskCommand):
-    async with AsyncSessionLocal() as session:
-        stmt = select(Device).where(Device.device_id == command.device_id)
-        result = await session.execute(stmt)
-        device = result.scalar_one_or_none()
-
-        if not device:
-            raise HTTPException(status_code=404, detail="Device not found")
-
-        command_id = str(uuid.uuid4())
-        new_command = Command(
-            id=command_id,
-            device_id=command.device_id,
-            task=command.task,
-            param=command.param,
-            status="pending",
-            created_at=datetime.now(),
-        )
-        session.add(new_command)
-        await session.commit()
-
-    logger.info(f"Command queued: {command.task} for device {command.device_id}")
-    return {"command_id": command_id, "status": "queued"}
+    command_id: Optional[str] = None
 
 
 @app.post("/result")
 async def receive_result(result: CommandResult):
     async with AsyncSessionLocal() as session:
-        stmt = select(Command).where(
-            Command.device_id == result.device_id, Command.task == result.task
-        )
+        if result.command_id:
+            stmt = select(Command).where(Command.id == result.command_id)
+        else:
+            stmt = select(Command).where(
+                Command.device_id == result.device_id,
+                Command.task == result.task,
+                Command.status == "pending",
+            )
+
         command = (await session.execute(stmt)).scalar_one_or_none()
 
         if command:
@@ -1183,79 +1103,88 @@ Generate a JSON list of tasks to optimize this PC. Return ONLY a JSON array of o
         "disk_space": disk[:5],
     }
 
+    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+
+    if not GOOGLE_API_KEY:
+        return {
+            "analysis": "error",
+            "message": "Google API key not configured. Set GOOGLE_API_KEY environment variable.",
+        }
+
     try:
-        logger.info(f"Sending request to Ollama for device {device_id}")
-        response = requests.post(
-            "http://localhost:11434/api/generate",
-            json={"model": "gemma4:e2b", "prompt": prompt, "stream": False},
-            timeout=120,
+        import google.genai as genai
+
+        client = genai.Client(api_key=GOOGLE_API_KEY)
+
+        logger.info(f"Sending request to Gemini for device {device_id}")
+
+        response = client.models.generate_content(
+            model="gemini-2.0-flash-lite", contents=prompt
         )
-        logger.info(f"Ollama response status: {response.status_code}")
 
-        if response.status_code == 200:
-            data = response.json()
-            ai_response = data.get("response", "")
-            logger.info(f"AI Response: {ai_response[:500]}")
+        ai_response = response.text
+        logger.info(f"AI Response: {ai_response[:500]}")
 
-            if "```json" in ai_response:
-                ai_response = ai_response.split("```json")[1].split("```")[0]
-            elif "```" in ai_response:
-                try:
-                    ai_response = ai_response.split("```")[1].split("```")[0]
-                except:
-                    pass
-
-            ai_response = ai_response.strip()
-            logger.info(f"Cleaned AI Response: {ai_response[:300]}")
-
+        if "```json" in ai_response:
+            ai_response = ai_response.split("```json")[1].split("```")[0]
+        elif "```" in ai_response:
             try:
-                tasks = json.loads(ai_response)
-                mapped_tasks = []
-                task_mapping = {
-                    "disk cleanup": "cleanup_temp_files",
-                    "cleanup temp files": "cleanup_temp_files",
-                    "cleanup temporary files": "cleanup_temp_files",
-                    "temp file cleanup": "cleanup_temp_files",
-                    "browser cache": "cleanup_browser_cache",
-                    "browser cache cleanup": "cleanup_browser_cache",
-                    "windows update cache": "cleanup_windows_update_cache",
-                    "recycle bin": "empty_recycle_bin",
-                    "empty recycle bin": "empty_recycle_bin",
-                    "telemetry": "disable_windows_telemetry",
-                    "disable telemetry": "disable_windows_telemetry",
-                    "xbox": "disable_xbox_features",
-                    "xbox features": "disable_xbox_features",
-                    "game mode": "disable_xbox_features",
-                    "cortana": "disable_cortana",
-                    "advertising id": "disable_advertising_id",
-                }
+                ai_response = ai_response.split("```")[1].split("```")[0]
+            except:
+                pass
 
-                for t in tasks:
-                    task_name = t.get("task", "").lower()
-                    param = t.get("param")
+        ai_response = ai_response.strip()
+        logger.info(f"Cleaned AI Response: {ai_response[:300]}")
 
-                    mapped_name = None
-                    for key, value in task_mapping.items():
-                        if key in task_name:
-                            mapped_name = value
-                            break
+        try:
+            tasks = json.loads(ai_response)
+            mapped_tasks = []
+            task_mapping = {
+                "disk cleanup": "cleanup_temp_files",
+                "cleanup temp files": "cleanup_temp_files",
+                "cleanup temporary files": "cleanup_temp_files",
+                "temp file cleanup": "cleanup_temp_files",
+                "browser cache": "cleanup_browser_cache",
+                "browser cache cleanup": "cleanup_browser_cache",
+                "windows update cache": "cleanup_windows_update_cache",
+                "recycle bin": "empty_recycle_bin",
+                "empty recycle bin": "empty_recycle_bin",
+                "telemetry": "disable_windows_telemetry",
+                "disable telemetry": "disable_windows_telemetry",
+                "xbox": "disable_xbox_features",
+                "xbox features": "disable_xbox_features",
+                "game mode": "disable_xbox_features",
+                "cortana": "disable_cortana",
+                "advertising id": "disable_advertising_id",
+                "ram cleanup": "cleanup_ram",
+                "memory cleanup": "cleanup_ram",
+                "startup apps": "get_startup_apps",
+                "startup programs": "get_startup_apps",
+            }
 
-                    if mapped_name:
-                        mapped_tasks.append({"task": mapped_name, "param": param})
-                    else:
-                        logger.warning(f"Could not map task: {t.get('task')}")
+            for t in tasks:
+                task_name = t.get("task", "").lower()
+                param = t.get("param")
 
-                return {"analysis": "success", "recommended_tasks": mapped_tasks}
-            except json.JSONDecodeError as ex:
-                logger.error(f"JSON parse error: {ex}")
-                return {
-                    "analysis": "error",
-                    "message": "Failed to parse AI response",
-                    "raw": ai_response[:500],
-                }
-        else:
-            logger.error(f"Ollama error: {response.text}")
-            return {"analysis": "error", "message": "Ollama API failed"}
+                mapped_name = None
+                for key, value in task_mapping.items():
+                    if key in task_name:
+                        mapped_name = value
+                        break
+
+                if mapped_name:
+                    mapped_tasks.append({"task": mapped_name, "param": param})
+                else:
+                    logger.warning(f"Could not map task: {t.get('task')}")
+
+            return {"analysis": "success", "recommended_tasks": mapped_tasks}
+        except json.JSONDecodeError as ex:
+            logger.error(f"JSON parse error: {ex}")
+            return {
+                "analysis": "error",
+                "message": "Failed to parse AI response",
+                "raw": ai_response[:500],
+            }
 
     except Exception as e:
         logger.error(f"Analysis failed: {e}")
