@@ -358,8 +358,8 @@
             document.getElementById('compTitle').textContent = t('beforeAfter');
         }
         
-        // API URL - auto-detect from current location, fallback to Railway
-        var API_URL = window.location.origin || 'https://pc-optimizer-ai-production.up.railway.app';
+        // API URL - FORCE Railway URL to bypass any caching issues
+        var API_URL = 'https://pc-optimizer-ai-production.up.railway.app';
         console.log('API URL:', API_URL);
 
         // Generate or retrieve device ID from localStorage
