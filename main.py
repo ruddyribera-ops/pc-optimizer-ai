@@ -464,7 +464,7 @@ async def root():
         // Auto-register device on page load
         function registerDevice() {
             var deviceInfo = getBrowserDeviceInfo();
-            fetch(API_URL + '/register', {
+            return fetch(API_URL + '/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
