@@ -26,5 +26,5 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# Run with uvicorn (per Railway docs: --host 0.0.0.0 --port $PORT)
-CMD uvicorn main:app --host 0.0.0.0 --port $PORT
+# Run uvicorn with explicit shell for proper PORT expansion
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
