@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PC Optimizer - Deploy to GitHub</title>
+    <style>
+        body { font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; background: #f5f5f5; }
+        h1 { color: #00ff88; }
+        .step { background: white; padding: 20px; margin: 15px 0; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        code { background: #f0f0f0; padding: 3px 8px; border-radius: 4px; }
+        button { background: #00ff88; color: black; border: none; padding: 15px 30px; font-size: 18px; font-weight: bold; border-radius: 8px; cursor: pointer; }
+        button:hover { background: #00cc6a; }
+        .done { color: green; }
+    </style>
+</head>
+<body>
+    <h1>PC Optimizer AI - Deployment</h1>
+    
+    <div class="step">
+        <h2>Step 1: Create GitHub Repository</h2>
+        <ol>
+            <li>Go to <a href="https://github.com/new" target="_blank">github.com/new</a></li>
+            <li>Repository name: <code>pc-optimizer-ai</code></li>
+            <li>Description: "AI-Powered PC Optimization Cloud Service"</li>
+            <li>Choose: Public or Private</li>
+            <li>Click: <strong>Create repository</strong></li>
+        </ol>
+    </div>
+    
+    <div class="step">
+        <h2>Step 2: Push Code to GitHub</h2>
+        <p>Open Command Prompt and run:</p>
+        <pre style="background:#222;color:#fff;padding:15px;border-radius:8px;">
+cd C:\Users\Windows\Desktop\pc-optimizer-cloud
+git remote add origin https://github.com/YOUR_USERNAME/pc-optimizer-ai.git
+git push -u origin main
+        </pre>
+        <p><em>(Replace YOUR_USERNAME with your GitHub username)</em></p>
+    </div>
+    
+    <div class="step">
+        <h2>Step 3: Deploy to Railway</h2>
+        <ol>
+            <li>Go to <a href="https://railway.com" target="_blank">railway.com</a></li>
+            <li>Click: <strong>New Project</strong></li>
+            <li>Select: <strong>Deploy from GitHub repo</strong></li>
+            <li>Find and click: <code>pc-optimizer-ai</code></li>
+            <li>Wait 2-3 minutes for deploy</li>
+        </ol>
+    </div>
+    
+    <div class="step">
+        <h2>Step 4: Get Your URL</h2>
+        <ol>
+            <li>In Railway: Click your project</li>
+            <li>Go to: <strong>Settings</strong> → <strong>Networking</strong></li>
+            <li>Click: <strong>Generate Domain</strong></li>
+            <li>Copy your URL!</li>
+        </ol>
+    </div>
+    
+    <div class="step">
+        <h2>Step 5: Test!</h2>
+        <p>Paste your URL in browser: <code>https://your-app-name.railway.app</code></p>
+        <p>You should see the PC Optimizer dashboard!</p>
+    </div>
+    
+    <script>
+        // Get current URL
+        document.write('<p>Your code is ready in: C:\\Users\\Windows\\Desktop\\pc-optimizer-cloud</p>');
+    </script>
+</body>
+</html>
