@@ -58,14 +58,20 @@ def get_db_engine():
     global async_engine, AsyncSessionLocal
     if async_engine is None:
         db_url = get_async_db_url(DATABASE_URL)
-        logger.info(f"Connecting to database: {db_url[:30]}...")
-        async_engine = create_async_engine(
-            db_url,
-            echo=False,
-            pool_pre_ping=True,
-            pool_size=10,
-            max_overflow=20,
-        )
+        logger.info(f"Connecting to database: {db_url[:50]}...")
+
+        engine_kwargs = {"echo": False}
+
+        if not db_url.startswith("sqlite"):
+            engine_kwargs.update(
+                {
+                    "pool_pre_ping": True,
+                    "pool_size": 10,
+                    "max_overflow": 20,
+                }
+            )
+
+        async_engine = create_async_engine(db_url, **engine_kwargs)
         AsyncSessionLocal = sessionmaker(
             async_engine, class_=AsyncSession, expire_on_commit=False
         )
