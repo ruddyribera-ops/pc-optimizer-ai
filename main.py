@@ -20,7 +20,11 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="PC Optimizer Cloud API")
 
 PORT = int(os.getenv("PORT", 8000))
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///optimizer.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+
+if not DATABASE_URL:
+    DATABASE_URL = "sqlite:///optimizer.db"
+    logger.warning("DATABASE_URL not set, using SQLite")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -46,17 +50,27 @@ def get_async_db_url(url: str) -> str:
     return url
 
 
-async_engine = create_async_engine(
-    get_async_db_url(DATABASE_URL),
-    echo=False,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
-)
+async_engine = None
+AsyncSessionLocal = None
 
-AsyncSessionLocal = sessionmaker(
-    async_engine, class_=AsyncSession, expire_on_commit=False
-)
+
+def get_db_engine():
+    global async_engine, AsyncSessionLocal
+    if async_engine is None:
+        db_url = get_async_db_url(DATABASE_URL)
+        logger.info(f"Connecting to database: {db_url[:30]}...")
+        async_engine = create_async_engine(
+            db_url,
+            echo=False,
+            pool_pre_ping=True,
+            pool_size=10,
+            max_overflow=20,
+        )
+        AsyncSessionLocal = sessionmaker(
+            async_engine, class_=AsyncSession, expire_on_commit=False
+        )
+    return async_engine
+
 
 Base = declarative_base()
 
@@ -94,6 +108,7 @@ class SystemSnapshot(Base):
 
 
 async def init_db():
+    get_db_engine()
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -555,6 +570,7 @@ async def execute_task_direct(device_id: str, task: str, param: str = None):
 @app.on_event("startup")
 async def startup():
     await init_db()
+    logger.info("Database initialized successfully")
 
 
 if __name__ == "__main__":
