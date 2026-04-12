@@ -479,7 +479,8 @@ async def root():
         function setLang(lang) {
             currentLang = lang;
             document.querySelectorAll('.lang-btn').forEach(function(b) { b.classList.remove('active'); });
-            document.querySelector('.lang-btn[onclick="setLang(\'' + lang + '\')"]').classList.add('active');
+            var activeBtn = document.querySelector('.lang-btn[onclick="setLang(\'' + lang + '\')"]');
+            if (activeBtn) activeBtn.classList.add('active');
             updateUI();
         }
         
@@ -548,7 +549,9 @@ async def root():
 
         // Auto-register device on page load
         function registerDevice() {
+            console.log('registerDevice() called');
             var deviceInfo = getBrowserDeviceInfo();
+            console.log('Device info:', deviceInfo);
             return fetch(API_URL + '/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -597,12 +600,15 @@ async def root():
         }
         
         function loadDevices() {
+            console.log('Loading devices from:', API_URL);
             fetch(API_URL + '/devices')
                 .then(function(res) { 
+                    console.log('Devices response status:', res.status);
                     if (!res.ok) throw new Error('API not available');
                     return res.json(); 
                 })
                 .then(function(devices) {
+                    console.log('Loaded devices:', devices.length);
                     var list = document.getElementById('deviceList');
                     if (devices.length === 0) {
                         var info = getBrowserDeviceInfo();
@@ -721,6 +727,7 @@ async def root():
         }
         
         function updateSystemInfo() {
+            console.log('updateSystemInfo() called, selectedDevice:', selectedDevice);
             if (!selectedDevice) {
                 showToast(currentLang === 'es' ? 'Selecciona un dispositivo' : 'Select a device', 'error');
                 return;
@@ -786,7 +793,9 @@ async def root():
         }
         
         function runTask() {
+            console.log('runTask() called');
             var task = document.getElementById('taskSelect').value;
+            console.log('Selected task:', task);
             if (!selectedDevice) {
                 showToast(currentLang === 'es' ? 'Selecciona un dispositivo' : 'Select a device', 'error');
                 return;
@@ -800,6 +809,7 @@ async def root():
         }
         
         function runAI() {
+            console.log('runAI() called, selectedDevice:', selectedDevice);
             if (!selectedDevice) {
                 showToast(currentLang === 'es' ? 'Selecciona un dispositivo' : 'Select a device', 'error');
                 return;
@@ -897,12 +907,26 @@ async def root():
         }
         
         // Initialize - wait for registration then load
-        registerDevice().then(function() {
+        console.log('PC Optimizer AI initializing...');
+        try {
+            registerDevice().then(function() {
+                console.log('Device registered successfully');
+                loadDevices();
+                loadSystemInfo();
+            }).catch(function(err) {
+                console.error('Registration failed:', err);
+                // Still try to load devices in local mode
+                loadDevices();
+                loadSystemInfo();
+            });
+        } catch(e) {
+            console.error('Initialization error:', e);
             loadDevices();
             loadSystemInfo();
-        });
+        }
         
         setInterval(loadDevices, 5000);
+        console.log('PC Optimizer AI initialized - ready for interaction');
     </script>
 </body>
 </html>"""
