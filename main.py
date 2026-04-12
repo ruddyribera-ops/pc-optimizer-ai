@@ -23,8 +23,14 @@ PORT = int(os.getenv("PORT", 8000))
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 if not DATABASE_URL:
-    DATABASE_URL = "sqlite:///optimizer.db"
-    logger.warning("DATABASE_URL not set, using SQLite")
+    import platform
+
+    if platform.system() == "Linux" or os.path.exists("/tmp"):
+        DATABASE_URL = "sqlite+aiosqlite:////tmp/optimizer.db"
+        logger.info("Using /tmp for SQLite database (Railway)")
+    else:
+        DATABASE_URL = "sqlite+aiosqlite:///optimizer.db"
+        logger.info("Using local SQLite database")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")

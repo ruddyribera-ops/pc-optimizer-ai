@@ -11,10 +11,6 @@
     "restartPolicyMaxRetries": 10
   },
   "environmentVariables": {
-    "DATABASE_URL": {
-      "description": "PostgreSQL connection string",
-      "value": "postgresql://postgres:LsRTilvgcqWCfjqMgCasxrmJBgqGeYhM@mainline.proxy.rlwy.net:25066/railway"
-    },
     "OLLAMA_URL": {
       "description": "Ollama API URL for AI",
       "default": "http://localhost:11434"
