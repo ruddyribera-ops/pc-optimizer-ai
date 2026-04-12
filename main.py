@@ -912,6 +912,12 @@ async def root():
     return html_content
 
 
+@app.get("/test")
+async def test_endpoint():
+    """Simple test endpoint for debugging"""
+    return {"status": "ok", "message": "App is working"}
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "pc-optimizer-api"}
