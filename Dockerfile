@@ -26,5 +26,5 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# Run with gunicorn for production stability
-CMD gunicorn main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000}
+# Run with gunicorn - it binds to 0.0.0.0 and uses PORT env var by default
+CMD gunicorn main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker
