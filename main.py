@@ -21,12 +21,36 @@ logger = logging.getLogger(__name__)
 PORT = int(os.getenv("PORT", 8000))
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
-if not DATABASE_URL:
+
+def is_valid_database_url(url: str) -> bool:
+    if not url:
+        return False
+    invalid_patterns = [
+        "host",
+        "port",
+        "username",
+        "password",
+        "your-",
+        "undefined",
+        "null",
+    ]
+    url_lower = url.lower()
+    for pattern in invalid_patterns:
+        if pattern in url_lower:
+            return False
+    if url.startswith("postgresql://") or url.startswith("sqlite://"):
+        return True
+    return False
+
+
+if not is_valid_database_url(DATABASE_URL):
     import platform
 
     if platform.system() == "Linux" or os.path.exists("/tmp"):
         DATABASE_URL = "sqlite+aiosqlite:////tmp/optimizer.db"
-        logger.info("Using /tmp for SQLite database (Railway)")
+        logger.info(
+            "Using /tmp for SQLite database (Railway) - DATABASE_URL was invalid"
+        )
     else:
         DATABASE_URL = "sqlite+aiosqlite:///optimizer.db"
         logger.info("Using local SQLite database")
