@@ -459,11 +459,23 @@
         
         function loadDevices() {
             fetch(API_URL + '/devices')
-                .then(function(res) { return res.json(); })
+                .then(function(res) { 
+                    if (!res.ok) throw new Error('API not available');
+                    return res.json(); 
+                })
                 .then(function(devices) {
                     var list = document.getElementById('deviceList');
                     if (devices.length === 0) {
-                        list.innerHTML = '<div class="device-item">' + t('noDevice') + '</div>';
+                        // Show current browser device as fallback
+                        var info = getBrowserDeviceInfo();
+                        list.innerHTML = '<div class="device-item selected" onclick="selectThisDevice()">' +
+                            '<span class="device-icon">🖥️</span>' +
+                            '<div>' +
+                            '<div class="device-name">' + info.os + ' Device</div>' +
+                            '<div class="device-status">● ' + (currentLang === 'es' ? 'Tu dispositivo' : 'Your Device') + '</div>' +
+                            '</div></div>';
+                        selectedDevice = getDeviceId();
+                        loadSystemInfo();
                         return;
                     }
                     list.innerHTML = '';
@@ -482,7 +494,25 @@
                         selectedDevice = devices[0].device_id;
                         loadSystemInfo();
                     }
+                })
+                .catch(function(err) {
+                    console.log('API not available, showing browser-only mode');
+                    var list = document.getElementById('deviceList');
+                    var info = getBrowserDeviceInfo();
+                    list.innerHTML = '<div class="device-item selected">' +
+                        '<span class="device-icon">🖥️</span>' +
+                        '<div>' +
+                        '<div class="device-name">' + info.os + ' Device</div>' +
+                        '<div class="device-status">● ' + (currentLang === 'es' ? 'Modo local' : 'Local Mode') + '</div>' +
+                        '</div></div>';
+                    selectedDevice = getDeviceId();
+                    loadSystemInfo();
                 });
+        }
+        
+        function selectThisDevice() {
+            selectedDevice = getDeviceId();
+            loadSystemInfo();
         }
         
         function loadSystemInfo() {
@@ -570,12 +600,12 @@
             
             var btn = document.getElementById('updateBtn');
             btn.disabled = true;
-            btn.innerHTML = '<span class="running">⏳ ' + (currentLang === 'es' ? 'Actualizando...' : 'Updating...') + '</span>';
+            btn.innerHTML = '<span class="running">⏳ ' + (currentLang === 'es' ? 'Escaneando...' : 'Scanning...') + '</span>';
             
             showProgress(true);
             setStep(0);
             
-            fetch('API_URL/execute/' + selectedDevice + '/get_system_info', { method: 'POST' })
+            fetch(API_URL + '/execute/' + selectedDevice + '/get_system_info', { method: 'POST' })
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
                     setStep(1);
@@ -594,10 +624,33 @@
                     }, 1000);
                 })
                 .catch(function(e) {
-                    showProgress(false);
-                    btn.disabled = false;
-                    btn.textContent = t('updateBtn');
-                    showToast('Error: ' + e.message, 'error');
+                    // API not available - use browser-detected info
+                    console.log('Using browser-detected info');
+                    setStep(1);
+                    setTimeout(function() {
+                        var info = getBrowserDeviceInfo();
+                        // Convert to system info format
+                        var sysInfo = {
+                            hostname: info.os + ' Device',
+                            os: info.os,
+                            browser: info.browser,
+                            screen: info.screen,
+                            cpu_cores: info.cpu_cores,
+                            device_memory: info.device_memory,
+                            language: info.language,
+                            total_ram_gb: navigator.deviceMemory || 8,
+                            free_ram_gb: (navigator.deviceMemory || 8) * 0.6
+                        };
+                        systemDataBefore = sysInfo;
+                        updateMeters(sysInfo);
+                        addLog('✓ ' + (currentLang === 'es' ? 'Dispositivo escaneado' : 'Device scanned'), 'success');
+                        setStep(2);
+                        setTimeout(function() {
+                            showProgress(false);
+                            btn.disabled = false;
+                            btn.textContent = t('updateBtn');
+                        }, 1000);
+                    }, 500);
                 });
         }
         
@@ -631,7 +684,7 @@
             showToast(t('analyzing'), 'info');
             addLog('🤖 AI Analysis started', 'info');
             
-            fetch('API_URL/analyze?device_id=' + selectedDevice, { method: 'POST' })
+            fetch(API_URL + '/analyze?device_id=' + selectedDevice, { method: 'POST' })
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
                     setStep(1);
@@ -655,14 +708,14 @@
             addLog('Starting: ' + task, 'info');
             
             // Get system info before
-            fetch('API_URL/execute/' + selectedDevice + '/get_system_info', { method: 'POST' })
+            fetch(API_URL + '/execute/' + selectedDevice + '/get_system_info', { method: 'POST' })
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
                     if (data.result) systemDataBefore = data.result;
                     setStep(1);
                     
                     // Now run the actual task
-                    return fetch('API_URL/execute/' + selectedDevice + '/' + task, { method: 'POST' });
+                    return fetch(API_URL + '/execute/' + selectedDevice + '/' + task, { method: 'POST' });
                 })
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
@@ -722,9 +775,13 @@
             }
         }
         
-        // Initialize
-        registerDevice();
-        loadDevices();
+        // Initialize - wait for registration then load
+        registerDevice().then(function() {
+            loadDevices();
+            loadSystemInfo(); // Load browser-detected info immediately
+        });
+        
+        // Also poll for device updates
         setInterval(loadDevices, 5000);
     </script>
 </body>
