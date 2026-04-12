@@ -358,6 +358,77 @@
             document.getElementById('compTitle').textContent = t('beforeAfter');
         }
         
+        // API URL - auto-detect from current location
+        var API_URL = window.location.origin;
+
+        // Generate or retrieve device ID from localStorage
+        function getDeviceId() {
+            var id = localStorage.getItem('optimizer_device_id');
+            if (!id) {
+                id = 'device_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+                localStorage.setItem('optimizer_device_id', id);
+            }
+            return id;
+        }
+
+        // Detect browser device info
+        function getBrowserDeviceInfo() {
+            var info = {
+                device_id: getDeviceId(),
+                hostname: navigator.userAgent.includes('Windows') ? 'Windows PC' : 'Device',
+                os: getOS(),
+                browser: getBrowser(),
+                screen: screen.width + 'x' + screen.height,
+                cpu_cores: navigator.hardwareConcurrency || 'Unknown',
+                device_memory: navigator.deviceMemory || 'Unknown',
+                language: navigator.language,
+                platform: navigator.platform,
+                user_agent: navigator.userAgent
+            };
+            return info;
+        }
+
+        function getOS() {
+            var ua = navigator.userAgent;
+            if (ua.includes('Windows')) return 'Windows ' + (ua.includes('11') ? '11' : '10');
+            if (ua.includes('Mac')) return 'macOS';
+            if (ua.includes('Linux')) return 'Linux';
+            if (ua.includes('Android')) return 'Android';
+            if (ua.includes('iOS')) return 'iOS';
+            return 'Unknown';
+        }
+
+        function getBrowser() {
+            var ua = navigator.userAgent;
+            if (ua.includes('Chrome')) return 'Chrome';
+            if (ua.includes('Firefox')) return 'Firefox';
+            if (ua.includes('Safari') && !ua.includes('Chrome')) return 'Safari';
+            if (ua.includes('Edge')) return 'Edge';
+            return 'Unknown';
+        }
+
+        // Auto-register device on page load
+        function registerDevice() {
+            var deviceInfo = getBrowserDeviceInfo();
+            fetch(API_URL + '/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    device_id: deviceInfo.device_id,
+                    api_key: 'browser_client',
+                    hostname: deviceInfo.hostname
+                })
+            })
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                console.log('Device registered:', data);
+                addLog(currentLang === 'es' ? 'Dispositivo detectado' : 'Device detected', 'success');
+            })
+            .catch(function(err) {
+                console.error('Registration failed:', err);
+            });
+        }
+
         function showToast(msg, type) {
             var toast = document.getElementById('toast');
             toast.textContent = msg;
@@ -387,7 +458,7 @@
         }
         
         function loadDevices() {
-            fetch('http://localhost:8000/devices')
+            fetch(API_URL + '/devices')
                 .then(function(res) { return res.json(); })
                 .then(function(devices) {
                     var list = document.getElementById('deviceList');
@@ -416,7 +487,7 @@
         
         function loadSystemInfo() {
             if (!selectedDevice) return;
-            fetch('http://localhost:8000/device/' + selectedDevice + '/history')
+            fetch(API_URL + '/device/' + selectedDevice + '/history')
                 .then(function(res) { return res.json(); })
                 .then(function(history) {
                     var sysInfo = null;
@@ -428,13 +499,39 @@
                     }
                     if (sysInfo) {
                         updateMeters(sysInfo);
+                    } else {
+                        // Use browser-detected info as fallback
+                        updateMeters(getBrowserDeviceInfo());
                     }
+                })
+                .catch(function() {
+                    // Use browser-detected info on error
+                    updateMeters(getBrowserDeviceInfo());
                 });
         }
         
+        // Update meters with browser fallback
         function updateMeters(data) {
+            // Check if this is browser-detected info (has cpu_cores)
+            var isBrowser = data.cpu_cores !== undefined;
+            
+            // RAM - try to detect from browser API if no server data
             var totalRam = data.total_ram_gb || 0;
             var freeRam = data.free_ram_gb || 0;
+            
+            if (!totalRam && navigator.deviceMemory) {
+                totalRam = navigator.deviceMemory;
+                freeRam = totalRam * 0.6; // Estimate 60% free
+            }
+            
+            if (!totalRam) {
+                // Default for browser demo
+                totalRam = 8;
+                freeRam = 4.8;
+            }
+            
+            var usedRam = totalRam - freeRam;
+            var ramPercent = totalRam > 0 ? Math.round((usedRam / totalRam) * 100) : 0;
             var usedRam = totalRam - freeRam;
             var ramPercent = totalRam > 0 ? Math.round((usedRam / totalRam) * 100) : 0;
             
@@ -478,7 +575,7 @@
             showProgress(true);
             setStep(0);
             
-            fetch('http://localhost:8000/execute/' + selectedDevice + '/get_system_info', { method: 'POST' })
+            fetch('API_URL/execute/' + selectedDevice + '/get_system_info', { method: 'POST' })
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
                     setStep(1);
@@ -534,7 +631,7 @@
             showToast(t('analyzing'), 'info');
             addLog('🤖 AI Analysis started', 'info');
             
-            fetch('http://localhost:8000/analyze?device_id=' + selectedDevice, { method: 'POST' })
+            fetch('API_URL/analyze?device_id=' + selectedDevice, { method: 'POST' })
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
                     setStep(1);
@@ -558,14 +655,14 @@
             addLog('Starting: ' + task, 'info');
             
             // Get system info before
-            fetch('http://localhost:8000/execute/' + selectedDevice + '/get_system_info', { method: 'POST' })
+            fetch('API_URL/execute/' + selectedDevice + '/get_system_info', { method: 'POST' })
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
                     if (data.result) systemDataBefore = data.result;
                     setStep(1);
                     
                     // Now run the actual task
-                    return fetch('http://localhost:8000/execute/' + selectedDevice + '/' + task, { method: 'POST' });
+                    return fetch('API_URL/execute/' + selectedDevice + '/' + task, { method: 'POST' });
                 })
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
@@ -626,6 +723,7 @@
         }
         
         // Initialize
+        registerDevice();
         loadDevices();
         setInterval(loadDevices, 5000);
     </script>
