@@ -1,0 +1,8 @@
+{
+    "host": "0.0.0.0",
+    "port": 8000,
+    "ollama_url": "http://localhost:11434",
+    "default_model": "gemma4-2b",
+    "database": "optimizer.db",
+    "log_level": "INFO"
+}

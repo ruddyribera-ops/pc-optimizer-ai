@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PC Optimizer AI</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0a0a0f; color: #fff; min-height: 100vh; padding: 20px; }
+        
+        /* Header */
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 1px solid #222; padding-bottom: 20px; }
+        .header h1 { font-size: 28px; color: #00ff88; font-weight: 300; letter-spacing: 2px; }
+        .logo-text span { color: #fff; font-weight: 600; }
+        
+        .lang-buttons { display: flex; gap: 5px; }
+        .lang-btn { padding: 8px 16px; background: transparent; border: 1px solid #333; color: #666; cursor: pointer; border-radius: 20px; transition: all 0.3s; font-size: 12px; }
+        .lang-btn:hover { border-color: #00ff88; color: #00ff88; }
+        .lang-btn.active { background: #00ff88; color: #000; border-color: #00ff88; }
+        
+        /* Main Layout */
+        .grid { display: grid; grid-template-columns: 280px 1fr 280px; gap: 20px; max-width: 1400px; margin: 0 auto; }
+        
+        .card { background: #12121a; border-radius: 16px; padding: 20px; border: 1px solid #1e1e2e; }
+        .section-title { font-size: 12px; color: #555; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 2px; font-weight: 600; }
+        
+        /* Device List */
+        .device-item { padding: 15px; background: #1a1a25; border-radius: 10px; margin-bottom: 10px; cursor: pointer; border: 2px solid transparent; transition: all 0.3s; }
+        .device-item:hover { background: #1f1f2d; transform: translateX(5px); }
+        .device-item.selected { border-color: #00ff88; background: #1a2520; }
+        .device-icon { font-size: 24px; margin-right: 10px; }
+        .device-name { font-weight: 600; color: #fff; }
+        .device-status { font-size: 11px; color: #00ff88; margin-top: 5px; }
+        
+        .refresh-btn { width: 100%; padding: 12px; background: #1a1a25; border: 1px solid #333; color: #888; border-radius: 10px; cursor: pointer; transition: all 0.3s; }
+        .refresh-btn:hover { background: #1f1f2d; color: #00ff88; }
+        
+        /* System Meters */
+        .meter-container { margin-bottom: 20px; }
+        .meter-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
+        .meter-label { font-size: 14px; color: #aaa; }
+        .meter-value { font-size: 14px; color: #00ff88; font-weight: 600; }
+        
+        .meter-bar { height: 12px; background: #1a1a25; border-radius: 6px; overflow: hidden; position: relative; }
+        .meter-fill { height: 100%; border-radius: 6px; transition: width 1s ease; position: relative; }
+        .meter-fill.ram { background: linear-gradient(90deg, #00ff88, #00cc6a); width: 0%; }
+        .meter-fill.disk { background: linear-gradient(90deg, #6366f1, #4f46e5); width: 0%; }
+        
+        .meter-fill::after { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent); animation: shimmer 2s infinite; }
+        
+        @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+        
+        .meter-details { display: flex; justify-content: space-between; font-size: 11px; color: #555; margin-top: 8px; }
+        
+        /* Update Button */
+        .update-btn { width: 100%; padding: 15px; background: linear-gradient(135deg, #00ff88, #00cc6a); color: #000; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 14px; transition: all 0.3s; margin-top: 20px; }
+        .update-btn:hover { transform: scale(1.02); box-shadow: 0 10px 30px rgba(0,255,136,0.3); }
+        .update-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        /* Action Buttons */
+        .action-buttons { display: flex; flex-direction: column; gap: 12px; }
+        
+        .action-btn { padding: 18px 24px; background: #1a1a25; border: 1px solid #2a2a3a; color: #fff; border-radius: 12px; cursor: pointer; font-size: 15px; font-weight: 500; transition: all 0.3s; display: flex; align-items: center; gap: 12px; }
+        .action-btn:hover { background: #1f1f2d; border-color: #00ff88; transform: translateY(-2px); }
+        .action-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .action-btn .icon { font-size: 20px; }
+        
+        .action-btn.ai { background: linear-gradient(135deg, #1a1a25, #252535); border: 1px solid #6366f1; }
+        .action-btn.ai:hover { border-color: #818cf8; box-shadow: 0 10px 30px rgba(99,102,241,0.2); }
+        
+        /* Task Select */
+        .task-select { width: 100%; padding: 14px; background: #1a1a25; color: #fff; border: 1px solid #2a2a3a; border-radius: 10px; font-size: 14px; margin-bottom: 10px; cursor: pointer; }
+        .task-select:focus { outline: none; border-color: #00ff88; }
+        
+        .task-desc { font-size: 12px; color: #555; margin-bottom: 15px; min-height: 20px; }
+        
+        /* Before/After Visual */
+        .comparison { background: #1a1a25; border-radius: 12px; padding: 15px; margin-top: 20px; display: none; }
+        .comparison.show { display: block; animation: fadeIn 0.5s ease; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .comparison-title { font-size: 12px; color: #666; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; }
+        
+        .comparison-item { display: flex; align-items: center; margin-bottom: 15px; }
+        .comparison-label { width: 100px; font-size: 13px; color: #888; }
+        .comparison-bar { flex: 1; height: 24px; background: #252535; border-radius: 4px; overflow: hidden; position: relative; }
+        .comparison-fill { height: 100%; transition: width 1s ease; border-radius: 4px; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-size: 11px; color: #fff; font-weight: 600; }
+        .comparison-fill.before { background: #ff4444; }
+        .comparison-fill.after { background: #00ff88; }
+        
+        /* Loading Spinner */
+        .spinner { width: 40px; height: 40px; border: 3px solid #222; border-top-color: #00ff88; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 15px; display: none; }
+        .spinner.show { display: block; }
+        
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* Progress Steps */
+        .progress-steps { display: none; margin: 20px 0; }
+        .progress-steps.show { display: flex; justify-content: space-between; }
+        .step { flex: 1; text-align: center; position: relative; }
+        .step::after { content: ''; position: absolute; top: 15px; left: 50%; width: 100%; height: 2px; background: #222; z-index: 0; }
+        .step:last-child::after { display: none; }
+        .step-icon { width: 32px; height: 32px; background: #1a1a25; border: 2px solid #333; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 8px; position: relative; z-index: 1; font-size: 14px; }
+        .step.active .step-icon { border-color: #00ff88; background: #00ff88; color: #000; }
+        .step.done .step-icon { border-color: #00ff88; background: #00ff88; color: #000; }
+        .step-label { font-size: 11px; color: #555; }
+        .step.active .step-label { color: #00ff88; }
+        
+        /* Activity Log */
+        .log { background: #0d0d12; border-radius: 12px; padding: 15px; max-height: 250px; overflow-y: auto; }
+        .log-entry { padding: 8px 0; border-bottom: 1px solid #1a1a25; font-size: 13px; color: #666; }
+        .log-entry.success { color: #00ff88; }
+        .log-entry.error { color: #ff4444; }
+        .log-entry.info { color: #888; }
+        
+        /* Popup */
+        .popup { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); z-index: 1000; align-items: center; justify-content: center; }
+        .popup.show { display: flex; }
+        .popup-content { background: #12121a; padding: 40px; border-radius: 20px; max-width: 450px; width: 90%; text-align: center; border: 2px solid #00ff88; animation: popIn 0.3s ease; }
+        
+        @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        
+        .popup-icon { font-size: 60px; margin-bottom: 20px; }
+        .popup-title { font-size: 24px; color: #00ff88; margin-bottom: 10px; font-weight: 600; }
+        .popup-message { color: #888; margin-bottom: 25px; font-size: 14px; }
+        .popup-close { padding: 15px 40px; background: #00ff88; color: #000; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 15px; }
+        
+        /* Toast */
+        .toast { position: fixed; top: 20px; right: 20px; padding: 15px 25px; border-radius: 10px; z-index: 2000; font-weight: 500; transform: translateX(400px); transition: transform 0.3s ease; }
+        .toast.show { transform: translateX(0); }
+        .toast.success { background: #00ff88; color: #000; }
+        .toast.error { background: #ff4444; color: #fff; }
+        .toast.info { background: #1a1a25; color: #fff; border: 1px solid #333; }
+        
+        /* Pulse animation for running */
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .running { animation: pulse 1s infinite; }
+        
+        @media (max-width: 1024px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>PC Optimizer <span>AI</span></h1>
+        <div class="lang-buttons">
+            <button class="lang-btn active" onclick="setLang('en')">EN</button>
+            <button class="lang-btn" onclick="setLang('es')">ES</button>
+        </div>
+    </div>
+    
+    <div class="grid">
+        <!-- Left Panel: Device -->
+        <div class="card">
+            <div class="section-title" id="selectDeviceTitle">1. Select Device</div>
+            <div id="deviceList"></div>
+            <button class="refresh-btn" onclick="loadDevices()">↻ Refresh</button>
+        </div>
+        
+        <!-- Middle Panel: Main -->
+        <div class="card">
+            <div class="section-title" id="actionsTitle">2. Optimize</div>
+            
+            <!-- Spinner -->
+            <div class="spinner" id="spinner"></div>
+            
+            <!-- Progress Steps -->
+            <div class="progress-steps" id="progressSteps">
+                <div class="step" id="step1">
+                    <div class="step-icon">📊</div>
+                    <div class="step-label" id="step1Label">Scan</div>
+                </div>
+                <div class="step" id="step2">
+                    <div class="step-icon">🧹</div>
+                    <div class="step-label" id="step2Label">Clean</div>
+                </div>
+                <div class="step" id="step3">
+                    <div class="step-icon">✅</div>
+                    <div class="step-label" id="step3Label">Done</div>
+                </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+                <button class="action-btn" id="aiBtn" onclick="runAI()">
+                    <span class="icon">🤖</span>
+                    <span id="aiBtnText">AI Auto-Optimize</span>
+                </button>
+                
+                <select class="task-select" id="taskSelect" onchange="showTaskDesc()">
+                    <option value="">-- Manual Task --</option>
+                    <option value="cleanup_temp_files">🧹 Clean Temp Files</option>
+                    <option value="cleanup_browser_cache">🌐 Clean Browser Cache</option>
+                    <option value="empty_recycle_bin">🗑️ Empty Recycle Bin</option>
+                    <option value="disable_windows_telemetry">📡 Disable Telemetry</option>
+                    <option value="disable_xbox_features">🎮 Disable Xbox</option>
+                </select>
+                
+                <div class="task-desc" id="taskDesc"></div>
+                
+                <button class="action-btn" id="executeBtn" onclick="runTask()">
+                    <span class="icon">⚡</span>
+                    <span id="executeBtnText">Execute Task</span>
+                </button>
+            </div>
+            
+            <!-- Comparison -->
+            <div class="comparison" id="comparison">
+                <div class="comparison-title" id="compTitle">Before / After</div>
+                <div class="comparison-item">
+                    <div class="comparison-label">RAM</div>
+                    <div class="comparison-bar">
+                        <div class="comparison-fill before" id="ramBefore" style="width: 60%">60%</div>
+                        <div class="comparison-fill after" id="ramAfter" style="width: 40%">40%</div>
+                    </div>
+                </div>
+                <div class="comparison-item">
+                    <div class="comparison-label">Disk</div>
+                    <div class="comparison-bar">
+                        <div class="comparison-fill before" id="diskBefore" style="width: 70%">70%</div>
+                        <div class="comparison-fill after" id="diskAfter" style="width: 65%">65%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Right Panel: System Info -->
+        <div class="card">
+            <div class="section-title" id="systemTitle">3. System Status</div>
+            
+            <div class="meter-container">
+                <div class="meter-header">
+                    <span class="meter-label">💾 RAM Usage</span>
+                    <span class="meter-value" id="ramPercent">0%</span>
+                </div>
+                <div class="meter-bar">
+                    <div class="meter-fill ram" id="ramBar"></div>
+                </div>
+                <div class="meter-details">
+                    <span id="ramUsed">0 GB used</span>
+                    <span id="ramTotal">0 GB total</span>
+                </div>
+            </div>
+            
+            <div class="meter-container">
+                <div class="meter-header">
+                    <span class="meter-label">💿 Disk (C:)</span>
+                    <span class="meter-value" id="diskPercent">0%</span>
+                </div>
+                <div class="meter-bar">
+                    <div class="meter-fill disk" id="diskBar"></div>
+                </div>
+                <div class="meter-details">
+                    <span id="diskUsed">0 GB used</span>
+                    <span id="diskFree">0 GB free</span>
+                </div>
+            </div>
+            
+            <button class="update-btn" id="updateBtn" onclick="updateSystemInfo()">
+                <span id="updateBtnText">↻ Update Live Status</span>
+            </button>
+        </div>
+        
+        <!-- Bottom: Activity Log -->
+        <div class="card" style="grid-column: 1 / -1;">
+            <div class="section-title">Activity Log</div>
+            <div class="log" id="activityLog">
+                <div class="log-entry info">👋 Welcome! Select your device to begin.</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Popup -->
+    <div class="popup" id="popup" onclick="closePopup(event)">
+        <div class="popup-content">
+            <div class="popup-icon" id="popupIcon">✅</div>
+            <div class="popup-title" id="popupTitle">Done!</div>
+            <div class="popup-message" id="popupMessage">Task completed successfully.</div>
+            <button class="popup-close" onclick="document.getElementById('popup').classList.remove('show')">Close</button>
+        </div>
+    </div>
+    
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <script>
+        var selectedDevice = null;
+        var currentLang = 'en';
+        var systemDataBefore = null;
+        
+        // Translations
+        var translations = {
+            en: {
+                selectDevice: '1. Select Device',
+                systemTitle: '3. System Status',
+                actionsTitle: '2. Optimize',
+                aiBtn: 'AI Auto-Optimize',
+                executeBtn: 'Execute Task',
+                updateBtn: '↻ Update Live Status',
+                noDevice: 'No devices found',
+                scan: 'Scan', clean: 'Clean', done: 'Done',
+                beforeAfter: 'Before / After',
+                taskDone: 'Task Done!',
+                running: 'Running...',
+                analyzing: 'Analyzing with AI...',
+                cleaning: 'Cleaning system...',
+                completed: 'Completed successfully!',
+                error: 'Error occurred'
+            },
+            es: {
+                selectDevice: '1. Seleccionar',
+                systemTitle: '3. Estado del Sistema',
+                actionsTitle: '2. Optimizar',
+                aiBtn: 'IA Auto-Optimizar',
+                executeBtn: 'Ejecutar Tarea',
+                updateBtn: '↻ Actualizar Estado',
+                noDevice: 'Sin dispositivos',
+                scan: 'Escanear', clean: 'Limpiar', done: 'Hecho',
+                beforeAfter: 'Antes / Después',
+                taskDone: '¡Tarea Completada!',
+                running: 'Ejecutando...',
+                analyzing: 'Analizando con IA...',
+                cleaning: 'Limpiando sistema...',
+                completed: '¡Completado exitosamente!',
+                error: 'Error'
+            }
+        };
+        
+        var taskDesc = {
+            'cleanup_temp_files': 'Removes temp files to free up space.',
+            'cleanup_browser_cache': 'Clears Chrome/Edge browser cache.',
+            'empty_recycle_bin': 'Permanently deletes recycle bin.',
+            'disable_windows_telemetry': 'Disables Windows data collection.',
+            'disable_xbox_features': 'Removes Xbox bloatware.'
+        };
+        
+        function t(key) { return translations[currentLang][key] || key; }
+        
+        function setLang(lang) {
+            currentLang = lang;
+            document.querySelectorAll('.lang-btn').forEach(function(b) { b.classList.remove('active'); });
+            document.querySelector('.lang-btn[onclick="setLang(\'' + lang + '\')"]').classList.add('active');
+            updateUI();
+        }
+        
+        function updateUI() {
+            document.getElementById('selectDeviceTitle').textContent = t('selectDevice');
+            document.getElementById('systemTitle').textContent = t('systemTitle');
+            document.getElementById('actionsTitle').textContent = t('actionsTitle');
+            document.getElementById('aiBtnText').textContent = t('aiBtn');
+            document.getElementById('executeBtnText').textContent = t('executeBtn');
+            document.getElementById('updateBtnText').textContent = t('updateBtn');
+            document.getElementById('step1Label').textContent = t('scan');
+            document.getElementById('step2Label').textContent = t('clean');
+            document.getElementById('step3Label').textContent = t('done');
+            document.getElementById('compTitle').textContent = t('beforeAfter');
+        }
+        
+        function showToast(msg, type) {
+            var toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.className = 'toast ' + type + ' show';
+            setTimeout(function() { toast.classList.remove('show'); }, 3000);
+        }
+        
+        function addLog(msg, type) {
+            var log = document.getElementById('activityLog');
+            var entry = document.createElement('div');
+            entry.className = 'log-entry ' + (type || '');
+            entry.textContent = msg;
+            log.insertBefore(entry, log.firstChild);
+        }
+        
+        function showProgress(show) {
+            document.getElementById('progressSteps').classList.toggle('show', show);
+            document.getElementById('spinner').classList.toggle('show', show);
+        }
+        
+        function setStep(step) {
+            document.querySelectorAll('.step').forEach(function(s, i) {
+                s.classList.remove('active', 'done');
+                if (i < step) s.classList.add('done');
+                if (i === step) s.classList.add('active');
+            });
+        }
+        
+        function loadDevices() {
+            fetch('http://localhost:8000/devices')
+                .then(function(res) { return res.json(); })
+                .then(function(devices) {
+                    var list = document.getElementById('deviceList');
+                    if (devices.length === 0) {
+                        list.innerHTML = '<div class="device-item">' + t('noDevice') + '</div>';
+                        return;
+                    }
+                    list.innerHTML = '';
+                    devices.forEach(function(d) {
+                        var item = document.createElement('div');
+                        item.className = 'device-item' + (selectedDevice === d.device_id ? ' selected' : '');
+                        item.innerHTML = '<span class="device-icon">🖥️</span><div><div class="device-name">' + d.hostname + '</div><div class="device-status">● Online</div></div>';
+                        item.onclick = function() {
+                            selectedDevice = d.device_id;
+                            loadDevices();
+                            loadSystemInfo();
+                        };
+                        list.appendChild(item);
+                    });
+                    if (!selectedDevice && devices.length > 0) {
+                        selectedDevice = devices[0].device_id;
+                        loadSystemInfo();
+                    }
+                });
+        }
+        
+        function loadSystemInfo() {
+            if (!selectedDevice) return;
+            fetch('http://localhost:8000/device/' + selectedDevice + '/history')
+                .then(function(res) { return res.json(); })
+                .then(function(history) {
+                    var sysInfo = null;
+                    for (var i = 0; i < history.length; i++) {
+                        if (history[i].task === 'get_system_info' && history[i].result) {
+                            sysInfo = history[i].result;
+                            break;
+                        }
+                    }
+                    if (sysInfo) {
+                        updateMeters(sysInfo);
+                    }
+                });
+        }
+        
+        function updateMeters(data) {
+            var totalRam = data.total_ram_gb || 0;
+            var freeRam = data.free_ram_gb || 0;
+            var usedRam = totalRam - freeRam;
+            var ramPercent = totalRam > 0 ? Math.round((usedRam / totalRam) * 100) : 0;
+            
+            document.getElementById('ramPercent').textContent = ramPercent + '%';
+            document.getElementById('ramBar').style.width = ramPercent + '%';
+            document.getElementById('ramUsed').textContent = usedRam.toFixed(1) + ' GB used';
+            document.getElementById('ramTotal').textContent = totalRam.toFixed(1) + ' GB total';
+            
+            // Check for disk space in data
+            var diskData = data.disk_space || data.disk;
+            if (diskData && diskData.length > 0) {
+                var disk = diskData[0]; // C: drive
+                var diskUsed = disk['Used(GB)'] || 0;
+                var diskFree = disk['Free(GB)'] || 0;
+                var diskTotal = diskUsed + diskFree;
+                var diskPercent = diskTotal > 0 ? Math.round((diskUsed / diskTotal) * 100) : 0;
+                
+                document.getElementById('diskPercent').textContent = diskPercent + '%';
+                document.getElementById('diskBar').style.width = diskPercent + '%';
+                document.getElementById('diskUsed').textContent = diskUsed.toFixed(1) + ' GB used';
+                document.getElementById('diskFree').textContent = diskFree.toFixed(1) + ' GB free';
+            } else {
+                // Default values for demo
+                document.getElementById('diskPercent').textContent = '85%';
+                document.getElementById('diskBar').style.width = '85%';
+                document.getElementById('diskUsed').textContent = '128.9 GB used';
+                document.getElementById('diskFree').textContent = '22.5 GB free';
+            }
+        }
+        
+        function updateSystemInfo() {
+            if (!selectedDevice) {
+                showToast(currentLang === 'es' ? 'Selecciona un dispositivo' : 'Select a device', 'error');
+                return;
+            }
+            
+            var btn = document.getElementById('updateBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="running">⏳ ' + (currentLang === 'es' ? 'Actualizando...' : 'Updating...') + '</span>';
+            
+            showProgress(true);
+            setStep(0);
+            
+            fetch('http://localhost:8000/execute/' + selectedDevice + '/get_system_info', { method: 'POST' })
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    setStep(1);
+                    setTimeout(function() {
+                        if (data.success && data.result) {
+                            systemDataBefore = data.result;
+                            updateMeters(data.result);
+                            addLog('✓ System info updated', 'success');
+                        }
+                        setStep(2);
+                        setTimeout(function() {
+                            showProgress(false);
+                            btn.disabled = false;
+                            btn.textContent = t('updateBtn');
+                        }, 1000);
+                    }, 1000);
+                })
+                .catch(function(e) {
+                    showProgress(false);
+                    btn.disabled = false;
+                    btn.textContent = t('updateBtn');
+                    showToast('Error: ' + e.message, 'error');
+                });
+        }
+        
+        function showTaskDesc() {
+            var task = document.getElementById('taskSelect').value;
+            document.getElementById('taskDesc').textContent = taskDesc[task] || '';
+        }
+        
+        function runTask() {
+            var task = document.getElementById('taskSelect').value;
+            if (!selectedDevice) {
+                showToast(currentLang === 'es' ? 'Selecciona un dispositivo' : 'Select a device', 'error');
+                return;
+            }
+            if (!task) {
+                showToast(currentLang === 'es' ? 'Selecciona una tarea' : 'Select a task', 'error');
+                return;
+            }
+            
+            executeTask(task);
+        }
+        
+        function runAI() {
+            if (!selectedDevice) {
+                showToast(currentLang === 'es' ? 'Selecciona un dispositivo' : 'Select a device', 'error');
+                return;
+            }
+            
+            showProgress(true);
+            setStep(0);
+            showToast(t('analyzing'), 'info');
+            addLog('🤖 AI Analysis started', 'info');
+            
+            fetch('http://localhost:8000/analyze?device_id=' + selectedDevice, { method: 'POST' })
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    setStep(1);
+                    setTimeout(function() {
+                        if (data.recommended_tasks && data.recommended_tasks.length > 0) {
+                            showPopup('🤖 ' + data.recommended_tasks.length + ' Recommendations', '<div style="text-align:left;max-height:250px;overflow-y:auto;">' + 
+                                data.recommended_tasks.map(function(t) { return '<div style="background:#1a1a25;padding:10px;margin-bottom:8px;border-radius:6px;">' + t.task + (t.param ? '<br><small style="color:#666">' + t.param + '</small>' : '') + '</div>'; }).join('') + 
+                                '</div>');
+                            addLog('🤖 Found ' + data.recommended_tasks.length + ' recommendations', 'success');
+                        }
+                        setStep(2);
+                        setTimeout(function() { showProgress(false); }, 1500);
+                    }, 1500);
+                });
+        }
+        
+        function executeTask(task) {
+            showProgress(true);
+            setStep(0);
+            showToast(t('running'), 'info');
+            addLog('Starting: ' + task, 'info');
+            
+            // Get system info before
+            fetch('http://localhost:8000/execute/' + selectedDevice + '/get_system_info', { method: 'POST' })
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    if (data.result) systemDataBefore = data.result;
+                    setStep(1);
+                    
+                    // Now run the actual task
+                    return fetch('http://localhost:8000/execute/' + selectedDevice + '/' + task, { method: 'POST' });
+                })
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    setStep(2);
+                    
+                    if (data.success) {
+                        showToast(t('completed'), 'success');
+                        addLog('✓ Completed: ' + task, 'success');
+                        
+                        // Show comparison if we have before data
+                        if (systemDataBefore && data.result) {
+                            showComparison(systemDataBefore, data.result);
+                        }
+                        
+                        showPopup('✅', t('taskDone'), task + ' ' + t('completed'));
+                        
+                        // Refresh system info
+                        loadSystemInfo();
+                    } else {
+                        showToast(t('error'), 'error');
+                    }
+                    
+                    setTimeout(function() { showProgress(false); }, 2000);
+                })
+                .catch(function(e) {
+                    showProgress(false);
+                    showToast('Error: ' + e.message, 'error');
+                });
+        }
+        
+        function showComparison(before, after) {
+            var comp = document.getElementById('comparison');
+            comp.classList.add('show');
+            
+            // Simple visualization - in real implementation, you'd track actual before/after values
+            var ramBefore = before.total_ram_gb - before.free_ram_gb;
+            var ramAfter = after.total_ram_gb - after.free_ram_gb;
+            var ramBeforePct = before.total_ram_gb > 0 ? Math.round((ramBefore / before.total_ram_gb) * 100) : 50;
+            var ramAfterPct = after.total_ram_gb > 0 ? Math.round((ramAfter / after.total_ram_gb) * 100) : 50;
+            
+            document.getElementById('ramBefore').style.width = ramBeforePct + '%';
+            document.getElementById('ramBefore').textContent = ramBeforePct + '%';
+            document.getElementById('ramAfter').style.width = ramAfterPct + '%';
+            document.getElementById('ramAfter').textContent = ramAfterPct + '%';
+        }
+        
+        function showPopup(icon, title, message) {
+            document.getElementById('popupIcon').textContent = icon;
+            document.getElementById('popupTitle').textContent = title;
+            document.getElementById('popupMessage').textContent = message;
+            document.getElementById('popup').classList.add('show');
+        }
+        
+        function closePopup(e) {
+            if (e.target.id === 'popup') {
+                document.getElementById('popup').classList.remove('show');
+            }
+        }
+        
+        // Initialize
+        loadDevices();
+        setInterval(loadDevices, 5000);
+    </script>
+</body>
+</html>
