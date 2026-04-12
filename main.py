@@ -968,6 +968,59 @@ async def health_check_alt():
     return {"status": "healthy"}
 
 
+@app.get("/devices")
+async def get_devices():
+    async with AsyncSessionLocal() as session:
+        stmt = select(Device).order_by(Device.last_seen.desc())
+        result = await session.execute(stmt)
+        devices = result.scalars().all()
+        return [
+            {
+                "device_id": d.device_id,
+                "hostname": d.hostname,
+                "registered_at": d.registered_at.isoformat()
+                if d.registered_at
+                else None,
+                "last_seen": d.last_seen.isoformat() if d.last_seen else None,
+                "status": d.status,
+            }
+            for d in devices
+        ]
+
+
+@app.post("/register")
+async def register_device(data: DeviceRegister):
+    async with AsyncSessionLocal() as session:
+        stmt = select(Device).where(Device.device_id == data.device_id)
+        existing = (await session.execute(stmt)).scalar_one_or_none()
+
+        if existing:
+            existing.hostname = data.hostname
+            existing.last_seen = datetime.now()
+            existing.status = "online"
+            await session.commit()
+            logger.info(f"Device updated: {data.device_id}")
+            return {
+                "status": "registered",
+                "device_id": data.device_id,
+                "updated": True,
+            }
+        else:
+            new_device = Device(
+                device_id=data.device_id,
+                hostname=data.hostname,
+                status="online",
+            )
+            session.add(new_device)
+            await session.commit()
+            logger.info(f"New device registered: {data.device_id}")
+            return {
+                "status": "registered",
+                "device_id": data.device_id,
+                "updated": False,
+            }
+
+
 class DeviceRegister(BaseModel):
     device_id: str
     api_key: str
