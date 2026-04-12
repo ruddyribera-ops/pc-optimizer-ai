@@ -625,6 +625,17 @@ async def root():
         
         function loadDevices() {
             console.log('Loading devices from:', API_URL);
+            
+            // Ensure device list always has content - even if API fails
+            var list = document.getElementById('deviceList');
+            if (!list) {
+                console.error('deviceList element not found!');
+                return;
+            }
+            
+            // Default content while loading
+            list.innerHTML = '<div class="device-item" style="opacity:0.5;">⏳ Loading...</div>';
+            
             fetch(API_URL + '/devices')
                 .then(function(res) { 
                     console.log('Devices response status:', res.status);
@@ -633,20 +644,24 @@ async def root():
                 })
                 .then(function(devices) {
                     console.log('Loaded devices:', devices.length);
-                    var list = document.getElementById('deviceList');
+                    list.innerHTML = '';
+                    
                     if (devices.length === 0) {
+                        // No devices registered - show local browser device
                         var info = getBrowserDeviceInfo();
-                        list.innerHTML = '<div class="device-item selected" onclick="selectThisDevice()">' +
+                        var localDeviceHtml = '<div class="device-item selected" onclick="selectThisDevice()">' +
                             '<span class="device-icon">🖥️</span>' +
                             '<div>' +
                             '<div class="device-name">' + info.os + ' Device</div>' +
-                            '<div class="device-status">● ' + (currentLang === 'es' ? 'Tu dispositivo' : 'Your Device') + '</div>' +
+                            '<div class="device-status">● Local Mode</div>' +
                             '</div></div>';
+                        list.innerHTML = localDeviceHtml;
                         selectedDevice = getDeviceId();
+                        console.log('No API devices, using local device:', selectedDevice);
                         loadSystemInfo();
                         return;
                     }
-                    list.innerHTML = '';
+                    
                     devices.forEach(function(d) {
                         var item = document.createElement('div');
                         item.className = 'device-item' + (selectedDevice === d.device_id ? ' selected' : '');
@@ -658,20 +673,20 @@ async def root():
                         };
                         list.appendChild(item);
                     });
+                    
                     if (!selectedDevice && devices.length > 0) {
                         selectedDevice = devices[0].device_id;
                         loadSystemInfo();
                     }
                 })
                 .catch(function(err) {
-                    console.log('API not available, showing browser-only mode');
-                    var list = document.getElementById('deviceList');
+                    console.error('API error, using local mode:', err);
                     var info = getBrowserDeviceInfo();
-                    list.innerHTML = '<div class="device-item selected">' +
+                    list.innerHTML = '<div class="device-item selected" onclick="selectThisDevice()">' +
                         '<span class="device-icon">🖥️</span>' +
                         '<div>' +
                         '<div class="device-name">' + info.os + ' Device</div>' +
-                        '<div class="device-status">● ' + (currentLang === 'es' ? 'Modo local' : 'Local Mode') + '</div>' +
+                        '<div class="device-status">● Offline Mode</div>' +
                         '</div></div>';
                     selectedDevice = getDeviceId();
                     loadSystemInfo();
@@ -679,8 +694,11 @@ async def root():
         }
         
         function selectThisDevice() {
+            console.log('selectThisDevice() called');
             selectedDevice = getDeviceId();
+            console.log('Selected local device:', selectedDevice);
             loadSystemInfo();
+            showToast('Using local device', 'info');
         }
         
         function loadSystemInfo() {
@@ -930,26 +948,23 @@ async def root():
             }
         }
         
-        // Initialize - wait for registration then load
+        // Initialize - try to register device first, then load devices
         console.log('PC Optimizer AI initializing...');
-        try {
-            registerDevice().then(function() {
-                console.log('Device registered successfully');
-                loadDevices();
-                loadSystemInfo();
-            }).catch(function(err) {
-                console.error('Registration failed:', err);
-                // Still try to load devices in local mode
-                loadDevices();
-                loadSystemInfo();
-            });
-        } catch(e) {
-            console.error('Initialization error:', e);
-            loadDevices();
-            loadSystemInfo();
-        }
         
-        setInterval(loadDevices, 5000);
+        // Try to register device (non-blocking)
+        registerDevice().catch(function(err) {
+            console.log('Registration skipped, continuing with local mode');
+        });
+        
+        // Always load devices immediately
+        loadDevices();
+        
+        // Also try to load system info after a short delay
+        setTimeout(function() {
+            loadSystemInfo();
+        }, 500);
+        
+        setInterval(loadDevices, 10000);
         console.log('PC Optimizer AI initialized - ready for interaction');
     </script>
 </body>
