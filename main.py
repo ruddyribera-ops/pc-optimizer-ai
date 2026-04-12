@@ -308,8 +308,8 @@ async def root():
     <div class="header">
         <h1>PC Optimizer <span>AI</span></h1>
         <div class="lang-buttons">
-            <button class="lang-btn active" onclick="setLang('en')">EN</button>
-            <button class="lang-btn" onclick="setLang('es')">ES</button>
+            <button class="lang-btn active" data-lang="en" onclick="setLang('en')">EN</button>
+            <button class="lang-btn" data-lang="es" onclick="setLang('es')">ES</button>
         </div>
     </div>
     
@@ -500,11 +500,15 @@ async def root():
         
         function t(key) { return translations[currentLang][key] || key; }
         
-        function setLang(lang) {
+function setLang(lang) {
             currentLang = lang;
             document.querySelectorAll('.lang-btn').forEach(function(b) { b.classList.remove('active'); });
-            var activeBtn = document.querySelector('.lang-btn[onclick="setLang(\\'' + lang + '\')"]');
-            if (activeBtn) activeBtn.classList.add('active');
+            var btns = document.querySelectorAll('.lang-btn');
+            btns.forEach(function(b) {
+                if (b.getAttribute('data-lang') === lang) {
+                    b.classList.add('active');
+                }
+            });
             updateUI();
         }
         
