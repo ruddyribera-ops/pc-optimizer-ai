@@ -968,6 +968,12 @@ async def health_check_alt():
     return {"status": "healthy"}
 
 
+class DeviceRegister(BaseModel):
+    device_id: str
+    api_key: str
+    hostname: str
+
+
 @app.get("/devices")
 async def get_devices():
     async with AsyncSessionLocal() as session:
@@ -1019,12 +1025,6 @@ async def register_device(data: DeviceRegister):
                 "device_id": data.device_id,
                 "updated": False,
             }
-
-
-class DeviceRegister(BaseModel):
-    device_id: str
-    api_key: str
-    hostname: str
 
 
 class TaskCommand(BaseModel):
