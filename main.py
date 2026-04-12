@@ -499,7 +499,7 @@ async def root():
         }
         
         // API URL - HARDCODED Railway URL to fix caching issues
-        var API_URL = 'https://pc-optimizer-ai-production.up.railway.app';
+        var API_URL = 'https://pc-optimizer-ai-production-9984.up.railway.app';
         console.log('API URL:', API_URL);
 
         // Generate or retrieve device ID from localStorage
