@@ -479,7 +479,7 @@ async def root():
         function setLang(lang) {
             currentLang = lang;
             document.querySelectorAll('.lang-btn').forEach(function(b) { b.classList.remove('active'); });
-            var activeBtn = document.querySelector('.lang-btn[onclick="setLang(\'' + lang + '\')"]');
+            var activeBtn = document.querySelector('.lang-btn[onclick="setLang(\\'' + lang + '\')"]');
             if (activeBtn) activeBtn.classList.add('active');
             updateUI();
         }
