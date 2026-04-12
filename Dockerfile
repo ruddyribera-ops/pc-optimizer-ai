@@ -20,6 +20,9 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Force cache invalidation
+ARG CACHEBUST=1
+
 # Copy application code
 COPY . .
 
