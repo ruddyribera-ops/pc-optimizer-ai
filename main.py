@@ -237,19 +237,37 @@ async def root():
         .task-desc { font-size: 12px; color: #555; margin-bottom: 15px; min-height: 20px; }
         
         /* Before/After Visual */
-        .comparison { background: #1a1a25; border-radius: 12px; padding: 15px; margin-top: 20px; display: none; }
-        .comparison.show { display: block; animation: fadeIn 0.5s ease; }
+        .comparison { background: #1a1a25; border-radius: 12px; padding: 15px; margin-top: 20px; animation: fadeIn 0.5s ease; }
+        .comparison.show { display: block; }
         
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         
-        .comparison-title { font-size: 12px; color: #666; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; }
+        .comparison-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .comparison-title { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
         
-        .comparison-item { display: flex; align-items: center; margin-bottom: 15px; }
-        .comparison-label { width: 100px; font-size: 13px; color: #888; }
-        .comparison-bar { flex: 1; height: 24px; background: #252535; border-radius: 4px; overflow: hidden; position: relative; }
-        .comparison-fill { height: 100%; transition: width 1s ease; border-radius: 4px; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-size: 11px; color: #fff; font-weight: 600; }
-        .comparison-fill.before { background: #ff4444; }
-        .comparison-fill.after { background: #00ff88; }
+        .comparison-section { margin-bottom: 20px; }
+        .comparison-section:last-child { margin-bottom: 0; }
+        .comparison-section-title { font-size: 14px; color: #fff; font-weight: 600; margin-bottom: 10px; }
+        
+        .comparison-row { display: flex; flex-direction: column; gap: 10px; }
+        .comparison-label-col { display: flex; align-items: center; gap: 10px; }
+        .before-label, .after-label { font-size: 12px; color: #888; width: 60px; }
+        .after-label { color: #00ff88; }
+        
+        .comparison-bar-container { flex: 1; height: 20px; background: #252535; border-radius: 4px; overflow: hidden; }
+        .comparison-fill { height: 100%; transition: width 1s ease; border-radius: 4px; }
+        .comparison-fill.before { background: linear-gradient(90deg, #ff4444, #ff6666); }
+        .comparison-fill.after { background: linear-gradient(90deg, #00ff88, #00cc6a); }
+        
+        .comparison-value { font-size: 12px; color: #fff; font-weight: 600; min-width: 50px; text-align: right; }
+        
+        .comparison-saved { margin-top: 8px; padding: 8px 12px; background: #1a2520; border-radius: 6px; border-left: 3px solid #00ff88; }
+        .comparison-saved .saved-icon { color: #00ff88; margin-right: 8px; }
+        .comparison-saved span:last-child { color: #00ff88; font-size: 13px; font-weight: 600; }
+        
+        .show-compare-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .show-compare-btn:not(:disabled) { background: #1a1a25; border-color: #00ff88; color: #00ff88; cursor: pointer; }
+        .show-compare-btn:not(:disabled):hover { background: #1f1f2d; }
         
         /* Loading Spinner */
         .spinner { width: 40px; height: 40px; border: 3px solid #222; border-top-color: #00ff88; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 15px; display: none; }
@@ -352,40 +370,81 @@ async def root():
                 </button>
                 
                 <select class="task-select" id="taskSelect" onchange="showTaskDesc()">
-                    <option value="">-- Manual Task --</option>
-                    <option value="cleanup_temp_files">🧹 Clean Temp Files</option>
-                    <option value="cleanup_browser_cache">🌐 Clean Browser Cache</option>
-                    <option value="empty_recycle_bin">🗑️ Empty Recycle Bin</option>
-                    <option value="disable_windows_telemetry">📡 Disable Telemetry</option>
-                    <option value="disable_xbox_features">🎮 Disable Xbox</option>
+                    <option value="">-- Tarea Manual --</option>
+                    <option value="cleanup_temp_files" data-info="cleanup_temp_files">🧹 Limpiar Archivos Temporales</option>
+                    <option value="cleanup_browser_cache" data-info="cleanup_browser_cache">🌐 Limpiar Cache del Navegador</option>
+                    <option value="empty_recycle_bin" data-info="empty_recycle_bin">🗑️ Vaciar Papelera de Reciclaje</option>
+                    <option value="disable_windows_telemetry" data-info="disable_windows_telemetry">📡 Desactivar Telemetria</option>
+                    <option value="disable_xbox_features" data-info="disable_xbox_features">🎮 Desactivar Funciones Xbox</option>
                 </select>
                 
                 <div class="task-desc" id="taskDesc"></div>
                 
+                <button class="info-btn" id="taskInfoBtn" onclick="showTaskInfo()" style="display:none; background:#1a1a25; border:1px solid #444; color:#888; padding:8px 12px; border-radius:8px; cursor:pointer; font-size:12px; margin-bottom:10px;">ℹ️ Informacion</button>
+                
                 <button class="action-btn" id="executeBtn" onclick="runTask()">
                     <span class="icon">⚡</span>
-                    <span id="executeBtnText">Execute Task</span>
+                    <span id="executeBtnText">Ejecutar Tarea</span>
                 </button>
             </div>
             
             <!-- Comparison -->
-            <div class="comparison" id="comparison">
-                <div class="comparison-title" id="compTitle">Before / After</div>
-                <div class="comparison-item">
-                    <div class="comparison-label">RAM</div>
-                    <div class="comparison-bar">
-                        <div class="comparison-fill before" id="ramBefore" style="width: 60%">60%</div>
-                        <div class="comparison-fill after" id="ramAfter" style="width: 40%">40%</div>
+            <div class="comparison" id="comparison" style="display:none;">
+                <div class="comparison-header">
+                    <div class="comparison-title" id="compTitle">Antes / Despues</div>
+                    <button class="compare-toggle-btn" id="hideCompareBtn" onclick="hideComparison()" style="background:#1a1a25;border:1px solid #444;color:#888;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">Ocultar</button>
+                </div>
+                
+                <div class="comparison-section">
+                    <div class="comparison-section-title">RAM</div>
+                    <div class="comparison-row">
+                        <div class="comparison-label-col">
+                            <span class="before-label">Antes:</span>
+                            <div class="comparison-bar-container">
+                                <div class="comparison-fill before" id="ramBeforeBar" style="width: 60%;"></div>
+                            </div>
+                            <span class="comparison-value" id="ramBeforeValue">60%</span>
+                        </div>
+                        <div class="comparison-label-col">
+                            <span class="after-label">Despues:</span>
+                            <div class="comparison-bar-container">
+                                <div class="comparison-fill after" id="ramAfterBar" style="width: 40%;"></div>
+                            </div>
+                            <span class="comparison-value" id="ramAfterValue">40%</span>
+                        </div>
+                    </div>
+                    <div class="comparison-saved" id="ramSaved">
+                        <span class="saved-icon">✓</span>
+                        <span id="ramSavedText">Ahorrado: 0 GB (0% reduccion)</span>
                     </div>
                 </div>
-                <div class="comparison-item">
-                    <div class="comparison-label">Disk</div>
-                    <div class="comparison-bar">
-                        <div class="comparison-fill before" id="diskBefore" style="width: 70%">70%</div>
-                        <div class="comparison-fill after" id="diskAfter" style="width: 65%">65%</div>
+                
+                <div class="comparison-section">
+                    <div class="comparison-section-title">Disco</div>
+                    <div class="comparison-row">
+                        <div class="comparison-label-col">
+                            <span class="before-label">Antes:</span>
+                            <div class="comparison-bar-container">
+                                <div class="comparison-fill before" id="diskBeforeBar" style="width: 70%;"></div>
+                            </div>
+                            <span class="comparison-value" id="diskBeforeValue">70%</span>
+                        </div>
+                        <div class="comparison-label-col">
+                            <span class="after-label">Despues:</span>
+                            <div class="comparison-bar-container">
+                                <div class="comparison-fill after" id="diskAfterBar" style="width: 65%;"></div>
+                            </div>
+                            <span class="comparison-value" id="diskAfterValue">65%</span>
+                        </div>
+                    </div>
+                    <div class="comparison-saved" id="diskSaved">
+                        <span class="saved-icon">✓</span>
+                        <span id="diskSavedText">Ahorrado: 0 GB (0% reduccion)</span>
                     </div>
                 </div>
             </div>
+            
+            <button class="show-compare-btn" id="showCompareBtn" onclick="showComparisonPanel()" disabled style="width:100%;padding:12px;background:#1a1a25;border:1px solid #333;color:#666;border-radius:10px;cursor:not-allowed;margin-top:15px;font-size:13px;">Ver Comparacion</button>
         </div>
         
         <!-- Right Panel: System Info -->
@@ -455,50 +514,206 @@ async def root():
         // Translations
         var translations = {
             en: {
+                // Panel titles
                 selectDevice: '1. Select Device',
                 systemTitle: '3. System Status',
                 actionsTitle: '2. Optimize',
+                
+                // Buttons
                 aiBtn: 'AI Auto-Optimize',
                 executeBtn: 'Execute Task',
-                updateBtn: '↻ Update Live Status',
-                noDevice: 'No devices found',
-                scan: 'Scan', clean: 'Clean', done: 'Done',
+                updateBtn: 'Update Live Status',
+                refreshBtn: 'Refresh',
+                showComparison: 'Show Comparison',
+                hideComparison: 'Hide Comparison',
+                
+                // System meters
+                ramUsage: 'RAM Usage',
+                diskUsage: 'Disk (C:)',
+                used: 'used',
+                free: 'free',
+                total: 'total',
+                
+                // Activity log
+                activityLog: 'Activity Log',
+                noDevices: 'No devices found',
+                welcome: 'Welcome! Select your device to begin.',
+                
+                // Progress steps
+                scan: 'Scan',
+                clean: 'Clean',
+                done: 'Done',
+                
+                // Comparison
                 beforeAfter: 'Before / After',
+                before: 'Before',
+                after: 'After',
+                saved: 'Saved',
+                reduction: 'reduction',
+                
+                // Task statuses
                 taskDone: 'Task Done!',
                 running: 'Running...',
                 analyzing: 'Analyzing with AI...',
                 cleaning: 'Cleaning system...',
                 completed: 'Completed successfully!',
-                error: 'Error occurred'
+                error: 'Error occurred',
+                
+                // Toasts
+                selectDevice: 'Select a device',
+                selectTask: 'Select a task',
+                deviceDetected: 'Device detected',
+                deviceScanned: 'Device scanned',
+                systemUpdated: 'System info updated',
+                analyzingStarted: 'AI Analysis started',
+                foundRecommendations: 'Found recommendations',
+                cleanupTemp: 'Cleaning temporary files...',
+                cleanupBrowser: 'Cleaning browser cache...',
+                cleanupRecycle: 'Emptying recycle bin...',
+                cleanupTelemetry: 'Disabling telemetry...',
+                cleanupXbox: 'Disabling Xbox features...',
+                usingLocalDevice: 'Using local device',
+                
+                // Task names
+                task_cleanup_temp_files: 'Clean Temp Files',
+                task_cleanup_browser_cache: 'Clean Browser Cache',
+                task_empty_recycle_bin: 'Empty Recycle Bin',
+                task_disable_windows_telemetry: 'Disable Telemetry',
+                task_disable_xbox_features: 'Disable Xbox Features',
+                
+                // Task descriptions
+                desc_cleanup_temp_files: 'Removes temporary files to free up disk space.',
+                desc_cleanup_browser_cache: 'Clears Chrome/Edge browser cache files.',
+                desc_empty_recycle_bin: 'Permanently deletes recycled files.',
+                desc_disable_windows_telemetry: 'Reduces Windows data collection.',
+                desc_disable_xbox_features: 'Removes Xbox background services.',
+                
+                // Info popup
+                taskInfoTitle: 'Task Information',
+                closeBtn: 'Close'
             },
             es: {
-                selectDevice: '1. Seleccionar',
+                // Panel titles
+                selectDevice: '1. Seleccionar Dispositivo',
                 systemTitle: '3. Estado del Sistema',
                 actionsTitle: '2. Optimizar',
+                
+                // Buttons
                 aiBtn: 'IA Auto-Optimizar',
                 executeBtn: 'Ejecutar Tarea',
-                updateBtn: '↻ Actualizar Estado',
-                noDevice: 'Sin dispositivos',
-                scan: 'Escanear', clean: 'Limpiar', done: 'Hecho',
-                beforeAfter: 'Antes / Después',
-                taskDone: '¡Tarea Completada!',
+                updateBtn: 'Actualizar Estado',
+                refreshBtn: 'Actualizar',
+                showComparison: 'Ver Comparacion',
+                hideComparison: 'Ocultar Comparacion',
+                
+                // System meters
+                ramUsage: 'Uso de RAM',
+                diskUsage: 'Disco (C:)',
+                used: 'usado',
+                free: 'libre',
+                total: 'total',
+                
+                // Activity log
+                activityLog: 'Registro de Actividad',
+                noDevices: 'Sin dispositivos',
+                welcome: 'Bienvenido! Selecciona tu dispositivo para comenzar.',
+                
+                // Progress steps
+                scan: 'Escanear',
+                clean: 'Limpiar',
+                done: 'Hecho',
+                
+                // Comparison
+                beforeAfter: 'Antes / Despues',
+                before: 'Antes',
+                after: 'Despues',
+                saved: 'Ahorrado',
+                reduction: 'reduccion',
+                
+                // Task statuses
+                taskDone: 'Tarea Completada!',
                 running: 'Ejecutando...',
                 analyzing: 'Analizando con IA...',
                 cleaning: 'Limpiando sistema...',
-                completed: '¡Completado exitosamente!',
-                error: 'Error'
+                completed: 'Completado exitosamente!',
+                error: 'Error',
+                
+                // Toasts
+                selectDevice: 'Selecciona un dispositivo',
+                selectTask: 'Selecciona una tarea',
+                deviceDetected: 'Dispositivo detectado',
+                deviceScanned: 'Dispositivo escaneado',
+                systemUpdated: 'Info del sistema actualizada',
+                analyzingStarted: 'Analisis de IA iniciado',
+                foundRecommendations: 'Encontradas recomendaciones',
+                cleanupTemp: 'Limpiando archivos temporales...',
+                cleanupBrowser: 'Limpiando cache del navegador...',
+                cleanupRecycle: 'Vaciando papelera...',
+                cleanupTelemetry: 'Desactivando telemetria...',
+                cleanupXbox: 'Desactivando funciones Xbox...',
+                usingLocalDevice: 'Usando dispositivo local',
+                
+                // Task names
+                task_cleanup_temp_files: 'Limpiar Archivos Temporales',
+                task_cleanup_browser_cache: 'Limpiar Cache del Navegador',
+                task_empty_recycle_bin: 'Vaciar Papelera de Reciclaje',
+                task_disable_windows_telemetry: 'Desactivar Telemetria',
+                task_disable_xbox_features: 'Desactivar Funciones Xbox',
+                
+                // Task descriptions
+                desc_cleanup_temp_files: 'Elimina archivos temporales para liberar espacio en disco.',
+                desc_cleanup_browser_cache: 'Elimina archivos cache de Chrome/Edge.',
+                desc_empty_recycle_bin: 'Elimina permanentemente archivos reciclados.',
+                desc_disable_windows_telemetry: 'Reduce la recopilacion de datos de Windows.',
+                desc_disable_xbox_features: 'Elimina servicios de Xbox en segundo plano.',
+                
+                // Info popup
+                taskInfoTitle: 'Informacion de la Tarea',
+                closeBtn: 'Cerrar'
             }
         };
         
-        var taskDesc = {
-            'cleanup_temp_files': 'Removes temp files to free up space.',
-            'cleanup_browser_cache': 'Clears Chrome/Edge browser cache.',
-            'empty_recycle_bin': 'Permanently deletes recycle bin.',
-            'disable_windows_telemetry': 'Disables Windows data collection.',
-            'disable_xbox_features': 'Removes Xbox bloatware.'
+        // Task info with brief explanations
+        var taskInfo = {
+            'cleanup_temp_files': {
+                name: { en: 'Clean Temp Files', es: 'Limpiar Archivos Temporales' },
+                desc: { en: 'Removes temporary files to free up disk space. Safe and can free 1-10 GB.', es: 'Elimina archivos temporales para liberar espacio en disco. Seguro y puede liberar 1-10 GB.' }
+            },
+            'cleanup_browser_cache': {
+                name: { en: 'Clean Browser Cache', es: 'Limpiar Cache del Navegador' },
+                desc: { en: 'Clears browser cache from Chrome and Edge. Can free 500 MB - 2 GB.', es: 'Limpia la cache del navegador Chrome y Edge. Puede liberar 500 MB - 2 GB.' }
+            },
+            'empty_recycle_bin': {
+                name: { en: 'Empty Recycle Bin', es: 'Vaciar Papelera de Reciclaje' },
+                desc: { en: 'Permanently deletes recycled files. Frees additional disk space.', es: 'Elimina permanentemente archivos reciclados. Libera espacio adicional en disco.' }
+            },
+            'disable_windows_telemetry': {
+                name: { en: 'Disable Telemetry', es: 'Desactivar Telemetria' },
+                desc: { en: 'Reduces Windows data collection. Improves privacy and performance.', es: 'Reduce el envio de datos de Windows. Mejora la privacidad y el rendimiento.' }
+            },
+            'disable_xbox_features': {
+                name: { en: 'Disable Xbox Features', es: 'Desactivar Funciones Xbox' },
+                desc: { en: 'Removes Xbox background services. Saves system resources.', es: 'Elimina servicios de Xbox en segundo plano. Ahorra recursos del sistema.' }
+            }
         };
         
         function t(key) { return translations[currentLang][key] || key; }
+        
+        function getTaskName(taskId) {
+            var info = taskInfo[taskId];
+            if (info && info.name && info.name[currentLang]) {
+                return info.name[currentLang];
+            }
+            return taskId;
+        }
+        
+        function getTaskDesc(taskId) {
+            var info = taskInfo[taskId];
+            if (info && info.desc && info.desc[currentLang]) {
+                return info.desc[currentLang];
+            }
+            return '';
+        }
         
 function setLang(lang) {
             currentLang = lang;
@@ -513,16 +728,43 @@ function setLang(lang) {
         }
         
         function updateUI() {
+            // Panel titles
             document.getElementById('selectDeviceTitle').textContent = t('selectDevice');
             document.getElementById('systemTitle').textContent = t('systemTitle');
             document.getElementById('actionsTitle').textContent = t('actionsTitle');
+            
+            // Buttons
             document.getElementById('aiBtnText').textContent = t('aiBtn');
             document.getElementById('executeBtnText').textContent = t('executeBtn');
             document.getElementById('updateBtnText').textContent = t('updateBtn');
+            
+            // Refresh button
+            document.querySelector('.refresh-btn').textContent = t('refreshBtn');
+            
+            // Progress steps
             document.getElementById('step1Label').textContent = t('scan');
             document.getElementById('step2Label').textContent = t('clean');
             document.getElementById('step3Label').textContent = t('done');
+            
+            // Comparison
             document.getElementById('compTitle').textContent = t('beforeAfter');
+            document.getElementById('showCompareBtn').textContent = t('showComparison');
+            
+            // Activity log section title
+            var logTitle = document.querySelector('.card:last-child .section-title');
+            if (logTitle) logTitle.textContent = t('activityLog');
+            
+            // Welcome message
+            var welcomeEntry = document.querySelector('#activityLog .log-entry.info');
+            if (welcomeEntry) welcomeEntry.textContent = t('welcome');
+            
+            // System status labels
+            document.querySelector('.meter-label').textContent = t('ramUsage');
+            var diskLabel = document.querySelectorAll('.meter-label')[1];
+            if (diskLabel) diskLabel.textContent = t('diskUsage');
+            
+            // Update task dropdown if showing description
+            showTaskDesc();
         }
         
         // API URL - HARDCODED Railway URL to fix caching issues
@@ -835,7 +1077,29 @@ function setLang(lang) {
         
         function showTaskDesc() {
             var task = document.getElementById('taskSelect').value;
-            document.getElementById('taskDesc').textContent = taskDesc[task] || '';
+            var desc = getTaskDesc(task);
+            document.getElementById('taskDesc').textContent = desc;
+            
+            // Show/hide info button based on selection
+            var infoBtn = document.getElementById('taskInfoBtn');
+            if (task && desc) {
+                infoBtn.style.display = 'block';
+            } else {
+                infoBtn.style.display = 'none';
+            }
+        }
+        
+        function showTaskInfo() {
+            var task = document.getElementById('taskSelect').value;
+            if (!task) return;
+            
+            var name = getTaskName(task);
+            var desc = getTaskDesc(task);
+            
+            showPopup('ℹ️', t('taskInfoTitle'), '<div style="text-align:left;padding:10px;">' +
+                '<div style="font-weight:bold;font-size:16px;margin-bottom:10px;color:#00ff88;">' + name + '</div>' +
+                '<div style="color:#aaa;line-height:1.6;">' + desc + '</div>' +
+                '</div>');
         }
         
         function runTask() {
@@ -887,7 +1151,8 @@ function setLang(lang) {
             showProgress(true);
             setStep(0);
             showToast(t('running'), 'info');
-            addLog('Starting: ' + task, 'info');
+            var taskName = getTaskName(task) || task;
+            addLog(t('running') + ' ' + taskName, 'info');
             
             fetch(API_URL + '/execute/' + selectedDevice + '/get_system_info', { method: 'POST' })
                 .then(function(res) { return res.json(); })
@@ -903,13 +1168,13 @@ function setLang(lang) {
                     
                     if (data.success) {
                         showToast(t('completed'), 'success');
-                        addLog('✓ Completed: ' + task, 'success');
+                        addLog('✓ ' + taskName + ' - ' + t('completed'), 'success');
                         
                         if (systemDataBefore && data.result) {
                             showComparison(systemDataBefore, data.result);
                         }
                         
-                        showPopup('✅', t('taskDone'), task + ' ' + t('completed'));
+                        showPopup('✅', t('taskDone'), taskName + ' - ' + t('completed'));
                         
                         loadSystemInfo();
                     } else {
@@ -924,19 +1189,70 @@ function setLang(lang) {
                 });
         }
         
-        function showComparison(before, after) {
+        function showComparisonPanel() {
             var comp = document.getElementById('comparison');
-            comp.classList.add('show');
+            var showBtn = document.getElementById('showCompareBtn');
+            if (comp && !comp.classList.contains('show')) {
+                comp.classList.add('show');
+            }
+        }
+        
+        function hideComparison() {
+            var comp = document.getElementById('comparison');
+            var showBtn = document.getElementById('showCompareBtn');
+            if (comp) {
+                comp.classList.remove('show');
+            }
+        }
+        
+        function showComparison(before, after) {
+            // RAM calculation
+            var ramBeforeUsed = before.total_ram_gb - before.free_ram_gb;
+            var ramAfterUsed = after.total_ram_gb - after.free_ram_gb;
+            var ramBeforePct = before.total_ram_gb > 0 ? Math.round((ramBeforeUsed / before.total_ram_gb) * 100) : 50;
+            var ramAfterPct = after.total_ram_gb > 0 ? Math.round((ramAfterUsed / after.total_ram_gb) * 100) : 50;
+            var ramSavedGb = ramBeforeUsed - ramAfterUsed;
+            var ramSavedPct = ramBeforeUsed > 0 ? Math.round((ramSavedGb / ramBeforeUsed) * 100) : 0;
             
-            var ramBefore = before.total_ram_gb - before.free_ram_gb;
-            var ramAfter = after.total_ram_gb - after.free_ram_gb;
-            var ramBeforePct = before.total_ram_gb > 0 ? Math.round((ramBefore / before.total_ram_gb) * 100) : 50;
-            var ramAfterPct = after.total_ram_gb > 0 ? Math.round((ramAfter / after.total_ram_gb) * 100) : 50;
+            // Disk calculation
+            var diskBeforeUsed = (before.disk_space && before.disk_space[0]) ? before.disk_space[0]['Used(GB)'] || 0 : 0;
+            var diskAfterUsed = (after.disk_space && after.disk_space[0]) ? after.disk_space[0]['Used(GB)'] || 0 : 0;
+            var diskBeforePct = (before.disk_space && before.disk_space[0]) ? before.disk_space[0]['Used(GB)'] / (before.disk_space[0]['Used(GB)'] + before.disk_space[0]['Free(GB)']) * 100 : 70;
+            var diskAfterPct = (after.disk_space && after.disk_space[0]) ? after.disk_space[0]['Used(GB)'] / (after.disk_space[0]['Used(GB)'] + after.disk_space[0]['Free(GB)']) * 100 : 65;
+            var diskSavedGb = diskBeforeUsed - diskAfterUsed;
+            var diskSavedPct = diskBeforeUsed > 0 ? Math.round((diskSavedGb / diskBeforeUsed) * 100) : 0;
             
-            document.getElementById('ramBefore').style.width = ramBeforePct + '%';
-            document.getElementById('ramBefore').textContent = ramBeforePct + '%';
-            document.getElementById('ramAfter').style.width = ramAfterPct + '%';
-            document.getElementById('ramAfter').textContent = ramAfterPct + '%';
+            // Update RAM comparison
+            document.getElementById('ramBeforeBar').style.width = ramBeforePct + '%';
+            document.getElementById('ramBeforeValue').textContent = ramBeforePct + '% (' + ramBeforeUsed.toFixed(1) + ' GB ' + t('used') + ')';
+            document.getElementById('ramAfterBar').style.width = ramAfterPct + '%';
+            document.getElementById('ramAfterValue').textContent = ramAfterPct + '% (' + ramAfterUsed.toFixed(1) + ' GB ' + t('used') + ')';
+            
+            var savedText = t('saved') + ': ' + Math.abs(ramSavedGb).toFixed(1) + ' GB';
+            if (ramSavedGb > 0) {
+                savedText += ' (' + ramSavedPct + '% ' + t('reduction') + ')';
+            }
+            document.getElementById('ramSavedText').textContent = savedText;
+            
+            // Update Disk comparison
+            document.getElementById('diskBeforeBar').style.width = diskBeforePct + '%';
+            document.getElementById('diskBeforeValue').textContent = Math.round(diskBeforePct) + '% (' + diskBeforeUsed.toFixed(0) + ' GB ' + t('used') + ')';
+            document.getElementById('diskAfterBar').style.width = diskAfterPct + '%';
+            document.getElementById('diskAfterValue').textContent = Math.round(diskAfterPct) + '% (' + diskAfterUsed.toFixed(0) + ' GB ' + t('used') + ')';
+            
+            var diskSavedText = t('saved') + ': ' + Math.abs(diskSavedGb).toFixed(1) + ' GB';
+            if (diskSavedGb > 0) {
+                diskSavedText += ' (' + diskSavedPct + '% ' + t('reduction') + ')';
+            }
+            document.getElementById('diskSavedText').textContent = diskSavedText;
+            
+            // Enable and show the comparison button
+            var showBtn = document.getElementById('showCompareBtn');
+            showBtn.disabled = false;
+            
+            // Translation updates for comparison labels
+            document.querySelector('.before-label').textContent = t('before') + ':';
+            document.querySelector('.after-label').textContent = t('after') + ':';
         }
         
         function showPopup(icon, title, message) {
