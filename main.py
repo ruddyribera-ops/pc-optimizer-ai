@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
@@ -18,16 +19,6 @@ import os
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="PC Optimizer Cloud API")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 PORT = int(os.getenv("PORT", 8000))
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
@@ -44,8 +35,113 @@ if not DATABASE_URL:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
+async_engine = None
+AsyncSessionLocal = None
+
+
+def get_async_db_url(url: str) -> str:
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+asyncpg://")
+    elif url.startswith("sqlite://"):
+        return url.replace("sqlite://", "sqlite+aiosqlite://")
+    return url
+
+
+def get_db_engine():
+    global async_engine, AsyncSessionLocal
+    if async_engine is None:
+        db_url = get_async_db_url(DATABASE_URL)
+        logger.info(f"Connecting to database: {db_url[:50]}...")
+
+        engine_kwargs = {"echo": False}
+
+        if not db_url.startswith("sqlite"):
+            engine_kwargs.update(
+                {
+                    "pool_pre_ping": True,
+                    "pool_size": 10,
+                    "max_overflow": 20,
+                }
+            )
+
+        async_engine = create_async_engine(db_url, **engine_kwargs)
+        AsyncSessionLocal = sessionmaker(
+            async_engine, class_=AsyncSession, expire_on_commit=False
+        )
+    return async_engine
+
+
+Base = declarative_base()
+
+
+class Device(Base):
+    __tablename__ = "devices"
+
+    device_id = Column(String, primary_key=True)
+    hostname = Column(String)
+    registered_at = Column(DateTime, default=datetime.now)
+    last_seen = Column(DateTime, default=datetime.now)
+    status = Column(String, default="online")
+
+
+class Command(Base):
+    __tablename__ = "commands"
+
+    id = Column(String, primary_key=True)
+    device_id = Column(String, nullable=False)
+    task = Column(String)
+    param = Column(String)
+    status = Column(String, default="pending")
+    created_at = Column(DateTime, default=datetime.now)
+    completed_at = Column(DateTime, nullable=True)
+    result = Column(Text, nullable=True)
+
+
+class SystemSnapshot(Base):
+    __tablename__ = "system_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_id = Column(String, nullable=False)
+    snapshot_json = Column(Text)
+    created_at = Column(DateTime, default=datetime.now)
+
+
+async def init_db():
+    global async_engine, AsyncSessionLocal
+    get_db_engine()
+    async with async_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database initialized successfully")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    logger.info("Startup complete")
+    yield
+    logger.info("Shutting down")
+
+
+app = FastAPI(title="PC Optimizer Cloud API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -825,84 +921,6 @@ async def root():
     return html_content
 
 
-def get_async_db_url(url: str) -> str:
-    """Convert sync DB URL to async URL"""
-    if url.startswith("postgresql://"):
-        return url.replace("postgresql://", "postgresql+asyncpg://")
-    elif url.startswith("sqlite://"):
-        return url.replace("sqlite://", "sqlite+aiosqlite://")
-    return url
-
-
-async_engine = None
-AsyncSessionLocal = None
-
-
-def get_db_engine():
-    global async_engine, AsyncSessionLocal
-    if async_engine is None:
-        db_url = get_async_db_url(DATABASE_URL)
-        logger.info(f"Connecting to database: {db_url[:50]}...")
-
-        engine_kwargs = {"echo": False}
-
-        if not db_url.startswith("sqlite"):
-            engine_kwargs.update(
-                {
-                    "pool_pre_ping": True,
-                    "pool_size": 10,
-                    "max_overflow": 20,
-                }
-            )
-
-        async_engine = create_async_engine(db_url, **engine_kwargs)
-        AsyncSessionLocal = sessionmaker(
-            async_engine, class_=AsyncSession, expire_on_commit=False
-        )
-    return async_engine
-
-
-Base = declarative_base()
-
-
-class Device(Base):
-    __tablename__ = "devices"
-
-    device_id = Column(String, primary_key=True)
-    hostname = Column(String)
-    registered_at = Column(DateTime, default=datetime.now)
-    last_seen = Column(DateTime, default=datetime.now)
-    status = Column(String, default="online")
-
-
-class Command(Base):
-    __tablename__ = "commands"
-
-    id = Column(String, primary_key=True)
-    device_id = Column(String, nullable=False)
-    task = Column(String)
-    param = Column(String)
-    status = Column(String, default="pending")
-    created_at = Column(DateTime, default=datetime.now)
-    completed_at = Column(DateTime, nullable=True)
-    result = Column(Text, nullable=True)
-
-
-class SystemSnapshot(Base):
-    __tablename__ = "system_snapshots"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    device_id = Column(String, nullable=False)
-    snapshot_json = Column(Text)
-    created_at = Column(DateTime, default=datetime.now)
-
-
-async def init_db():
-    get_db_engine()
-    async with async_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "pc-optimizer-api"}
@@ -1355,12 +1373,6 @@ async def execute_task_direct(device_id: str, task: str, param: str = None):
     except Exception as e:
         logger.error(f"Direct execution failed: {e}")
         return {"success": False, "error": str(e)}
-
-
-@app.on_event("startup")
-async def startup():
-    await init_db()
-    logger.info("Database initialized successfully")
 
 
 if __name__ == "__main__":
