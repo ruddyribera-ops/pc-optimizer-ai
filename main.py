@@ -1,4 +1,3 @@
-from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
@@ -114,15 +113,7 @@ async def init_db():
     logger.info("Database initialized successfully")
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    await init_db()
-    logger.info("Startup complete")
-    yield
-    logger.info("Shutting down")
-
-
-app = FastAPI(title="PC Optimizer Cloud API", lifespan=lifespan)
+app = FastAPI(title="PC Optimizer Cloud API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -135,13 +126,11 @@ app.add_middleware(
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
+@app.on_event("startup")
+async def startup():
+    await init_db()
+    logger.info("Database initialized successfully")
 
 
 @app.get("/", response_class=HTMLResponse)
