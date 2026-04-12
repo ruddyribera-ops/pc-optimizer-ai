@@ -26,5 +26,5 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# Run with gunicorn - it binds to 0.0.0.0 and uses PORT env var by default
-CMD gunicorn main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker
+# Run with uvicorn (per Railway docs: --host 0.0.0.0 --port $PORT)
+CMD uvicorn main:app --host 0.0.0.0 --port $PORT
