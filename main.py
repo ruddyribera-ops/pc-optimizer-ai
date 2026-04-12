@@ -515,7 +515,7 @@ async def root():
         var translations = {
             en: {
                 // Panel titles
-                selectDevice: '1. Select Device',
+                selectDevice: 'Your Device',
                 systemTitle: '3. System Status',
                 actionsTitle: '2. Optimize',
                 
@@ -594,7 +594,7 @@ async def root():
             },
             es: {
                 // Panel titles
-                selectDevice: '1. Seleccionar Dispositivo',
+                selectDevice: 'Tu Dispositivo',
                 systemTitle: '3. Estado del Sistema',
                 actionsTitle: '2. Optimizar',
                 
@@ -879,8 +879,12 @@ function setLang(lang) {
                 return;
             }
             
+            // Get current device ID
+            var currentDeviceId = getDeviceId();
+            console.log('Current device ID:', currentDeviceId);
+            
             // Default content while loading
-            list.innerHTML = '<div class="device-item" style="opacity:0.5;">⏳ Loading...</div>';
+            list.innerHTML = '<div class="device-item" style="opacity:0.5;">⏳ Cargando...</div>';
             
             fetch(API_URL + '/devices')
                 .then(function(res) { 
@@ -892,47 +896,45 @@ function setLang(lang) {
                     console.log('Loaded devices:', devices.length);
                     list.innerHTML = '';
                     
-                    if (devices.length === 0) {
-                        // No devices registered - show local browser device
+                    // Filter to find current device only
+                    var currentDevice = null;
+                    for (var i = 0; i < devices.length; i++) {
+                        if (devices[i].device_id === currentDeviceId) {
+                            currentDevice = devices[i];
+                            break;
+                        }
+                    }
+                    
+                    if (currentDevice) {
+                        // Show current device
+                        var item = document.createElement('div');
+                        item.className = 'device-item selected';
+                        item.innerHTML = '<span class="device-icon">🖥️</span><div><div class="device-name">' + currentDevice.hostname + '</div><div class="device-status">● Tu Dispositivo</div></div>';
+                        list.appendChild(item);
+                        selectedDevice = currentDeviceId;
+                        console.log('Showing current device:', currentDevice.hostname);
+                    } else {
+                        // Current device not in API list - show local mode
                         var info = getBrowserDeviceInfo();
-                        var localDeviceHtml = '<div class="device-item selected" onclick="selectThisDevice()">' +
+                        list.innerHTML = '<div class="device-item selected">' +
                             '<span class="device-icon">🖥️</span>' +
                             '<div>' +
                             '<div class="device-name">' + info.os + ' Device</div>' +
-                            '<div class="device-status">● Local Mode</div>' +
+                            '<div class="device-status">● Modo Local</div>' +
                             '</div></div>';
-                        list.innerHTML = localDeviceHtml;
-                        selectedDevice = getDeviceId();
-                        console.log('No API devices, using local device:', selectedDevice);
-                        loadSystemInfo();
-                        return;
+                        selectedDevice = currentDeviceId;
+                        console.log('Current device not in API, using local mode');
                     }
-                    
-                    devices.forEach(function(d) {
-                        var item = document.createElement('div');
-                        item.className = 'device-item' + (selectedDevice === d.device_id ? ' selected' : '');
-                        item.innerHTML = '<span class="device-icon">🖥️</span><div><div class="device-name">' + d.hostname + '</div><div class="device-status">● Online</div></div>';
-                        item.onclick = function() {
-                            selectedDevice = d.device_id;
-                            loadDevices();
-                            loadSystemInfo();
-                        };
-                        list.appendChild(item);
-                    });
-                    
-                    if (!selectedDevice && devices.length > 0) {
-                        selectedDevice = devices[0].device_id;
-                        loadSystemInfo();
-                    }
+                    loadSystemInfo();
                 })
                 .catch(function(err) {
                     console.error('API error, using local mode:', err);
                     var info = getBrowserDeviceInfo();
-                    list.innerHTML = '<div class="device-item selected" onclick="selectThisDevice()">' +
+                    list.innerHTML = '<div class="device-item selected">' +
                         '<span class="device-icon">🖥️</span>' +
                         '<div>' +
                         '<div class="device-name">' + info.os + ' Device</div>' +
-                        '<div class="device-status">● Offline Mode</div>' +
+                        '<div class="device-status">● Modo Local</div>' +
                         '</div></div>';
                     selectedDevice = getDeviceId();
                     loadSystemInfo();
@@ -1258,7 +1260,7 @@ function setLang(lang) {
         function showPopup(icon, title, message) {
             document.getElementById('popupIcon').textContent = icon;
             document.getElementById('popupTitle').textContent = title;
-            document.getElementById('popupMessage').textContent = message;
+            document.getElementById('popupMessage').innerHTML = message;
             document.getElementById('popup').classList.add('show');
         }
         
