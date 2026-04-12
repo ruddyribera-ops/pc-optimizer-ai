@@ -129,8 +129,10 @@ if os.path.exists(STATIC_DIR):
 
 @app.on_event("startup")
 async def startup():
-    await init_db()
-    logger.info("Database initialized successfully")
+    # Initialize database lazily on first request instead
+    # await init_db()
+    # logger.info("Database initialized successfully")
+    logger.info("Application startup complete")
 
 
 @app.get("/", response_class=HTMLResponse)
