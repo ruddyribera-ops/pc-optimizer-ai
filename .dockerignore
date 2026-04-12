@@ -1,0 +1,15 @@
+__pycache__
+*.pyc
+*.pyo
+*.db
+*.sqlite
+.env
+.env.local
+.git
+.gitignore
+.vscode
+.idea
+*.md
+*.bat
+deploy_guide.html
+optimizer.db
