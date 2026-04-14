@@ -377,9 +377,45 @@ def main():
             info = agent.get_system_info()
             print(f"System: {json.dumps(info, indent=2)}")
 
+            # Send system info to backend
+            try:
+                requests.post(
+                    f"{agent.api_url}/device/{agent.device_id}/system-info",
+                    json=info,
+                    timeout=10,
+                )
+                print("System info sent to backend")
+            except Exception as e:
+                print(f"Failed to send system info: {e}")
+
             print("\nFetching disk space...")
             disk = agent.get_disk_space()
             print(f"Disk: {json.dumps(disk, indent=2)}")
+
+            # Send disk space to backend
+            try:
+                for d in disk:
+                    used = d.get("Used(GB)", 0)
+                    free = d.get("Free(GB)", 1)
+                    d["percent"] = (
+                        round(used / (used + free) * 100) if (used + free) > 0 else 0
+                    )
+                    d["used_gb"] = used
+                    d["free_gb"] = free
+                system_data = {**info, "disk_space": disk}
+                requests.post(
+                    f"{agent.api_url}/device/{agent.device_id}/system-info",
+                    json=system_data,
+                    timeout=10,
+                )
+                requests.post(
+                    f"{agent.api_url}/device/{agent.device_id}/system-info",
+                    json={**info, "disk_space": disk},
+                    timeout=10,
+                )
+                print("Disk info sent to backend")
+            except Exception as e:
+                print(f"Failed to send disk info: {e}")
         else:
             print("Failed to register with backend")
             print(
