@@ -19,7 +19,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-API_URL = "https://pc-optimizer-ai-production-9984.up.railway.app"
+API_URL = "https://pc-optimizer-ai.onrender.com"
 LOCAL_API_URL = "http://localhost:8000"
 
 
