@@ -355,10 +355,11 @@ class Agent:
 
 
 def main():
+    # Default to Railway URL, can override via command line
     if len(sys.argv) > 1:
         api_url = sys.argv[1]
     else:
-        api_url = LOCAL_API_URL
+        api_url = API_URL  # Use Railway by default
 
     agent = Agent(api_url)
 
