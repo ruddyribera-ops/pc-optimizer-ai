@@ -27,9 +27,7 @@ class Config:
     """Application configuration with validation"""
 
     # API URL for frontend (can be overridden via env)
-    API_URL = os.getenv(
-        "API_URL", "https://pc-optimizer-ai-production-9984.up.railway.app"
-    )
+    API_URL = os.getenv("API_URL", "https://pc-optimizer-ai.onrender.com")
 
     # Database
     DATABASE_URL = os.getenv("DATABASE_URL", "")
@@ -37,7 +35,7 @@ class Config:
     # CORS - Whitelist specific domains for security
     CORS_ORIGINS = os.getenv(
         "CORS_ORIGINS",
-        "https://pc-optimizer-ai-production-9984.up.railway.app,http://localhost:3000,http://localhost:8000",
+        "https://pc-optimizer-ai.onrender.com,http://localhost:3000,http://localhost:8000",
     ).split(",")
 
     # Port
