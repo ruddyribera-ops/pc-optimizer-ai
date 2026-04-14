@@ -9,7 +9,6 @@ import uuid
 import logging
 from datetime import datetime
 from typing import Optional
-from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, FileResponse
@@ -211,21 +210,20 @@ latest_system_info: dict = {}
 # ============================================================================
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Startup and shutdown events"""
-    await init_db()
-    logger.info("PC Optimizer API started")
-    yield
-    logger.info("PC Optimizer API shutdown")
-
-
+# Use traditional startup_event instead of lifespan to avoid issues
 app = FastAPI(
     title="PC Optimizer AI",
     description="Cloud dashboard for PC optimization with AI recommendations",
     version="2.0.0",
-    lifespan=lifespan,
 )
+
+
+@app.on_event("startup")
+async def startup():
+    """Initialize database on startup"""
+    await init_db()
+    logger.info("PC Optimizer API started")
+
 
 # CORS - Whitelist specific origins for security
 app.add_middleware(
